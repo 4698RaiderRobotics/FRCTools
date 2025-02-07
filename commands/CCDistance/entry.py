@@ -215,9 +215,9 @@ def edit_command_created(args: adsk.core.CommandCreatedEventArgs):
 
     futil.add_handler(args.command.destroy, command_destroy, local_handlers=local_handlers)
 
-    if target_CCLine.line.isFullyConstrained :
-        futil.popup_error( 'CC Line is Fully Constrained and cannot be edited.  Remove some constraints to edit.')
-        return
+    # if target_CCLine.line.isFullyConstrained :
+    #     futil.popup_error( 'CC Line is Fully Constrained and cannot be edited.  Remove some constraints to edit.')
+    #     return
 
     # https://help.autodesk.com/view/fusion360/ENU/?contextId=CommandInputs
     inputs = args.command.commandInputs

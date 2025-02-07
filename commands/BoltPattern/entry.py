@@ -44,6 +44,7 @@ bolt_patterns: list[BoltPattern] = [
     BoltPattern('Kraken X44', 0.75, 1.375, 0.196, 12, [0,0,0,0,0,0,0,0,0,0,0,1]),
     BoltPattern('NEO Vortex', 0.75, 2.0, 0.196, 8, [0,0,0,1,0,0,0,1]),
     BoltPattern('NEO 550', 0.5118, 0.9843, 0.125, 4, []),
+    BoltPattern('REV MAXPlanetary', 1.125, 2.0, 0.196, 8, [0,0,1,1,0,0,1,1]),
     BoltPattern('2" MultiMotor', 0.75, 2.0, 0.196, 24, [0,1,0,0,0,1, 0,1,0,0,0,1, 0,1,0,0,0,1, 0,1,0,0,0,1]),
 ]
 
