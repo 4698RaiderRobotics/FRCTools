@@ -70,6 +70,7 @@ pinionTeeth   = [  8,  9, 10, 11, 12, 12, 13, 14, 14, 15, 16 ]
 #           idx = pinionTeeth - 7
 #        else:
 #           idx = pinionTeeth - 6
+# used in edit_command_created()
 
 # Executed when add-in is run.
 def start():
@@ -245,7 +246,7 @@ def edit_command_created(args: adsk.core.CommandCreatedEventArgs):
     inputs.addSeparatorCommandInput( "selection_cog1_sep")
 
     # Create a integer spinners for cog1 and pinion options.
-    cog1Teeth = inputs.addIntegerSpinnerCommandInput('cog1_teeth', 'Cog #1 Teeth', 8, 100, 1, 36)
+    cog1Teeth = inputs.addIntegerSpinnerCommandInput('cog1_teeth', 'Cog #1 Teeth', 6, 100, 1, 36)
     group1CmdInput = inputs.addGroupCommandInput('use_pinion_cog1', 'Use Pinion')
     group1CmdInput.isExpanded = False
     group1CmdInput.isEnabledCheckBoxDisplayed = True
@@ -257,7 +258,7 @@ def edit_command_created(args: adsk.core.CommandCreatedEventArgs):
 
 
      # Create a integer spinners for cog1 and pinion options.
-    cog2Teeth = inputs.addIntegerSpinnerCommandInput('cog2_teeth', 'Cog #2 Teeth', 8, 100, 1, 24)
+    cog2Teeth = inputs.addIntegerSpinnerCommandInput('cog2_teeth', 'Cog #2 Teeth', 6, 100, 1, 24)
     group2CmdInput = inputs.addGroupCommandInput('use_pinion_cog2', 'Use Pinion')
     group2CmdInput.isExpanded = False
     group2CmdInput.isEnabledCheckBoxDisplayed = True
@@ -278,6 +279,10 @@ def edit_command_created(args: adsk.core.CommandCreatedEventArgs):
     defaultLengthUnits = "in"
     default_value = adsk.core.ValueInput.createByString('0.003')
     extraCenter = inputs.addValueInput('extra_center', 'Extra Center', defaultLengthUnits, default_value)
+
+    # Create a separator.
+    inputs.addSeparatorCommandInput( "message_sep")
+    status = inputs.addTextBoxCommandInput( "status_msg", "", "Gear", 1, True )
 
     # Fill the inputs with the ccLine info
     lineData = target_CCLine.data
@@ -313,6 +318,8 @@ def edit_command_created(args: adsk.core.CommandCreatedEventArgs):
         
     extraCenter.value = lineData.ExtraCenterIN * 2.54
     motionType.listItems.item( lineData.motion ).isSelected = True
+
+    status.text = createLabelString( lineData )
 
     # Connect to the events that are needed by this command.
     futil.add_handler(args.command.execute, command_execute, local_handlers=local_handlers)
@@ -369,7 +376,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     inputs.addSeparatorCommandInput( "selection_cog1_sep")
 
     # Create a integer spinners for cog1 and pinion options.
-    inputs.addIntegerSpinnerCommandInput('cog1_teeth', 'Cog #1 Teeth', 8, 100, 1, 36)
+    inputs.addIntegerSpinnerCommandInput('cog1_teeth', 'Cog #1 Teeth', 6, 100, 1, 24)
     groupCmdInput = inputs.addGroupCommandInput('use_pinion_cog1', 'Use Pinion')
     groupCmdInput.isExpanded = False
     groupCmdInput.isEnabledCheckBoxDisplayed = True
@@ -381,7 +388,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
 
      # Create a integer spinners for cog1 and pinion options.
-    inputs.addIntegerSpinnerCommandInput('cog2_teeth', 'Cog #2 Teeth', 8, 100, 1, 24)
+    inputs.addIntegerSpinnerCommandInput('cog2_teeth', 'Cog #2 Teeth', 6, 100, 1, 36)
     groupCmdInput = inputs.addGroupCommandInput('use_pinion_cog2', 'Use Pinion')
     groupCmdInput.isExpanded = False
     groupCmdInput.isEnabledCheckBoxDisplayed = True
@@ -401,7 +408,11 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     default_value = adsk.core.ValueInput.createByString('0.003')
     inputs.addValueInput('extra_center', 'Extra Center', defaultLengthUnits, default_value)
 
-    # TODO Connect to the events that are needed by this command.
+    # Create a separator.
+    inputs.addSeparatorCommandInput( "message_sep")
+    inputs.addTextBoxCommandInput( "status_msg", "", "Gear 20DP 24T+36T EC(0.003)", 1, True )
+
+    # Connect to the events that are needed by this command.
     futil.add_handler(args.command.execute, command_execute, local_handlers=local_handlers)
     futil.add_handler(args.command.inputChanged, command_input_changed, local_handlers=local_handlers)
     futil.add_handler(args.command.executePreview, command_preview, local_handlers=local_handlers)
@@ -432,6 +443,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
     swapCogs = inputs.itemById( "swap_cogs" ).value
     beltTeethInp: adsk.core.IntegerSpinnerCommandInput = inputs.itemById( "belt_teeth" )
     extraCenterInp: adsk.core.ValueInput = inputs.itemById('extra_center')
+    status: adsk.core.TextBoxCommandInput = inputs.itemById('status_msg')
 
     startSketchPt = None
     endSketchPt = None
@@ -483,12 +495,18 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
     if not isCCLine( ccLine.line ):
         calcCCLineData( ccLine.data )
+        if ccLine.data.ccDistIN < 0.001:
+            return
         dimAndLabelCCLine( ccLine )
         createEndCircles( ccLine )
     else:
         calcCCLineData( ccLine.data )
+        if ccLine.data.ccDistIN < 0.001:
+            return
         modifyCCLine( ccLine )
 
+    msg = f'<div align="center">{createLabelString( ccLine.data )}</div>'
+    status.formattedText = msg
     if not preview :
         setCCLineAttributes( ccLine )
 
@@ -617,16 +635,32 @@ def command_input_changed(args: adsk.core.InputChangedEventArgs):
 # which allows you to verify that all of the inputs are valid and enables the OK button.
 def command_validate_input(args: adsk.core.ValidateInputsEventArgs):
 
-    # futil.log(f'{args.firingEvent.name} Command Validate Event')
-
     inputs = args.inputs
+    motionType: adsk.core.DropDownCommandInput = inputs.itemById('motion_type')
     cog1Teeth: adsk.core.IntegerSpinnerCommandInput = inputs.itemById('cog1_teeth')
     cog2Teeth: adsk.core.IntegerSpinnerCommandInput = inputs.itemById('cog2_teeth')
+    beltTeeth: adsk.core.IntegerSpinnerCommandInput = inputs.itemById( "belt_teeth" )
+    status: adsk.core.TextBoxCommandInput = inputs.itemById('status_msg')
 
-    if not (cog1Teeth.value >= 8 and cog1Teeth.value < 100 and cog2Teeth.value >= 8 and cog1Teeth.value < 100 ):
+#    futil.log(f'{args.firingEvent.name} Command Validate Event, Motion={motionType.selectedItem.index}, N1={cog1Teeth.value}, N2={cog2Teeth.value}, T={beltTeeth.value}')
+
+    if not (cog1Teeth.value >= 6 and cog1Teeth.value < 100 and cog2Teeth.value >= 6 and cog1Teeth.value < 100 ):
+        status.formattedText = '<div align="center"><font color="red">Invalid Number of cog teeth!</font></div>'
         args.areInputsValid = False
         return
     
+    ld = CCLineData()
+    ld.motion = motionType.selectedItem.index
+    ld.N1 = cog1Teeth.value
+    ld.N2 = cog2Teeth.value
+    ld.Teeth = beltTeeth.value
+    calcCCLineData( ld )
+    if ld.motion != 0 and ld.ccDistIN < (ld.OD1 + ld.OD2) / 2.0 :
+        # belt is too short
+        status.formattedText = '<div align="center"><font color="red">Belt is too short!</font></div>'
+        args.areInputsValid = False
+        return
+
     args.areInputsValid = True        
 
 # This event handler is called when the command terminates.
@@ -687,6 +721,9 @@ def BeltCCDistanceIN( N1: int, N2: int, beltTeeth: int, pitchMM: int ) -> float:
     b = 2 * PL - math.pi * ( PD1 + PD2 )
     fourAC = 8 * (PD1 - PD2)*(PD1 - PD2)
 
+    if b*b - fourAC < 0 :
+        return 0.0
+    
     return ( b + math.sqrt( b*b - fourAC) ) / 8
 
 def BeltPitchDiameterIN( NT: int, pitchMM: int ) -> float:
@@ -711,7 +748,7 @@ def createCCLine(
         endpt3D = futil.offsetPoint3D( startpt.geometry, 2 * 2.54, 0, 0 )
         endpt = sketch.sketchPoints.add( endpt3D )
 
-    futil.log( f' createCCLine() points = {futil.format_Point3D(startpt.geometry)} -- {futil.format_Point3D(endpt.geometry)}')
+    # futil.log( f' createCCLine() points = {futil.format_Point3D(startpt.geometry)} -- {futil.format_Point3D(endpt.geometry)}')
 
     # Create C-C line a midpoint for it and dimension it
     ccLine = sketch.sketchCurves.sketchLines.addByTwoPoints( startpt, endpt )

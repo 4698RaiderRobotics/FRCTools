@@ -18,7 +18,7 @@ DEBUG = True
 # This is used when defining unique internal names for various UI elements 
 # that need a unique name. It's also recommended to use a company name as 
 # part of the ID to better ensure the ID is unique.
-ADDIN_NAME = os.path.basename(os.path.dirname(__file__))
+ADDIN_NAME = 'FRCTools'
 COMPANY_NAME = 'Team4698'
 
 # Palettes
