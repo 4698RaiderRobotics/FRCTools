@@ -48,16 +48,16 @@ motionTypes = (
 motionTypesDefault = motionTypes.index( 'Gears 20DP' )
 
 pinionGears = (
-    '8T (10TCD)',
-    '9T (10TCD)',
-    '10T (12TCD)',
-    '11T (12TCD)',
+    '8T (10T-CD)',
+    '9T (10T-CD)',
+    '10T (12T-CD)',
+    '11T (12T-CD)',
     '12T',
-    '12T (14TCD)',
-    '13T (14TCD)',
+    '12T (14T-CD)',
+    '13T (14T-CD)',
     '14T',
-    '14T (16TCD)',
-    '15T (16TCD)',
+    '14T (16T-CD)',
+    '15T (16T-CD)',
     '16T'
 )
 
@@ -227,13 +227,10 @@ def ui_marking_menu(args: adsk.core.MarkingMenuEventArgs):
 def edit_command_created(args: adsk.core.CommandCreatedEventArgs):
     global target_CCLine
 
+    if not target_CCLine:
+        return
+    
     # futil.log(f'{args.command.parentCommandDefinition.name} edit_command_created()')
-
-    futil.add_handler(args.command.destroy, command_destroy, local_handlers=local_handlers)
-
-    # if target_CCLine.line.isFullyConstrained :
-    #     futil.popup_error( 'CC Line is Fully Constrained and cannot be edited.  Remove some constraints to edit.')
-    #     return
 
     # https://help.autodesk.com/view/fusion360/ENU/?contextId=CommandInputs
     inputs = args.command.commandInputs
@@ -511,7 +508,7 @@ def command_input_changed(args: adsk.core.InputChangedEventArgs):
     inputs = args.input.parentCommand.commandInputs
 
     # General logging for debug.
-    futil.log(f'{args.firingEvent.name} Input Changed Event fired from a change to {changed_input.id}')
+    # futil.log(f'{args.firingEvent.name} Input Changed Event fired from a change to {changed_input.id}')
 
     motionType: adsk.core.DropDownCommandInput = inputs.itemById('motion_type')
     curveSelection: adsk.core.SelectionCommandInput = inputs.itemById('curve_selection')
@@ -783,20 +780,32 @@ def dimAndLabelCCLine( ccLine: CCLine ) :
 
 
 def createLabelString( ld: CCLineData ) -> str:
+
+    n1 = ld.N1
+    n2 = ld.N2
+    p1 = ld.PIN1
+    p2 = ld.PIN2
+    if n1 > n2 :
+        n1 = ld.N2
+        n2 = ld.N1
+        p1 = ld.PIN2
+        p2 = ld.PIN1
+
     if ld.motion == 0:
-        if ld.PIN1 > 0 and ld.PIN1 != ld.N1 :
-            lineLabel = f'Gear 20DP {ld.PIN1}T({ld.N1}T-CD)+{ld.N2}T'
-        elif ld.PIN2 > 0 and ld.PIN2 != ld.N2 :
-            lineLabel = f'Gear 20DP {ld.N1}T+{ld.PIN2}T({ld.N2}T-CD)'
+        if p1 > 0 and p1 != n1 :
+            if p2 > 0 and p2 != n2 :
+                lineLabel = f'Gear 20DP {p1}T({n1}T-CD)+{p2}T({n2}T-CD)'
+            else:
+                lineLabel = f'Gear 20DP {p1}T({n1}T-CD)+{n2}T'
         else:
-            lineLabel = f'Gear 20DP {ld.N1}T+{ld.N2}T'
+            lineLabel = f'Gear 20DP {n1}T+{n2}T'
     else :
         if ld.motion == 1:
     #         # HTD 5mm Belt
-            lineLabel = f'{ld.Teeth}T HTD 5mm ({ld.N1}Tx{ld.N2}T)'
+            lineLabel = f'{ld.Teeth}T HTD 5mm ({n1}Tx{n2}T)'
         else :
     #         # HTD 3mm Belt
-            lineLabel = f'{ld.Teeth}T GT2 3mm ({ld.N1}Tx{ld.N2}T)'
+            lineLabel = f'{ld.Teeth}T GT2 3mm ({n1}Tx{n2}T)'
     
     if abs(ld.ExtraCenterIN) > 0.0005 :
         lineLabel += f' EC({ld.ExtraCenterIN:.3})'
