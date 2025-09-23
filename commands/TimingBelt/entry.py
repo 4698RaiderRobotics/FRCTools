@@ -35,14 +35,8 @@ def start():
     futil.add_handler(cmd_def.commandCreated, command_created)
 
     # ******** Add a button into the UI so the user can run the command. ********
-    # Get the target workspace the button will be created in.
-    workspace = ui.workspaces.itemById(config.WORKSPACE_ID)
-
-    # Get the panel the button will be created in.
-    panel = workspace.toolbarPanels.itemById(config.PANEL_ID)
-
-    # Create the the FRCTool submenu.
-    submenu = panel.controls.itemById( config.DROPDOWN_ID )
+    # Get the FRCTool submenu.
+    submenu = config.get_solid_submenu()
 
     # Create the button command control in the UI.
     control = submenu.controls.addCommand(cmd_def)
@@ -54,9 +48,7 @@ def start():
 # Executed when add-in is stopped.
 def stop():
     # Get the various UI elements for this command
-    workspace = ui.workspaces.itemById(config.WORKSPACE_ID)
-    panel = workspace.toolbarPanels.itemById(config.PANEL_ID)
-    submenu = panel.controls.itemById( config.DROPDOWN_ID )
+    submenu = config.get_solid_submenu()
     command_control = submenu.controls.itemById(CMD_ID)
     command_definition = ui.commandDefinitions.itemById(CMD_ID)
 

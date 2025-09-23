@@ -9,6 +9,8 @@ CC_ATTRIBUTE_GROUP = "CCDistance_Group"
 CC_LINE_TEETH = "Teeth"
 CC_LINE_N1 = "N1"
 CC_LINE_N2 = "N2"
+CC_LINE_PIN1 = "PIN1"
+CC_LINE_PIN2 = "PIN2"
 CC_LINE_EC = "EC"
 CC_LINE_MOTION_TYPE = "MOTION"
 CC_LINE_PITCH_CIRCLE1 = "PC1"
@@ -29,6 +31,8 @@ CC_LINE_PARENT_LINE = "CCLine"
 class CCLineData :
     N1 = 0
     N2 = 0
+    PIN1 = 0    # For addendum gears (pinions) this is the number of teeth and N1 will be the CD
+    PIN2 = 0    # For addendum gears (pinions) this is the number of teeth and N2 will be the CD
     Teeth = 0
     ExtraCenterIN = 0.00
     motion = 0
@@ -82,6 +86,8 @@ def setCCLineAttributes( ccLine: CCLine ) :
     # Set the data attributes
     setAttribute( line, CC_LINE_N1, str(ld.N1) )
     setAttribute( line, CC_LINE_N2, str(ld.N2) )
+    setAttribute( line, CC_LINE_PIN1, str(ld.PIN1) )
+    setAttribute( line, CC_LINE_PIN2, str(ld.PIN2) )
     setAttribute( line, CC_LINE_TEETH, str(ld.Teeth) )
     setAttribute( line, CC_LINE_EC, str(ld.ExtraCenterIN) )
     setAttribute( line, CC_LINE_MOTION_TYPE, str(ld.motion) )
@@ -126,6 +132,10 @@ def getLineData( line: adsk.fusion.SketchLine ) -> CCLineData :
     cclineData.N1 = int(attr.value)
     attr = line.attributes.itemByName( CC_ATTRIBUTE_GROUP, CC_LINE_N2 )
     cclineData.N2 = int(attr.value)
+    attr = line.attributes.itemByName( CC_ATTRIBUTE_GROUP, CC_LINE_PIN1 )
+    cclineData.PIN1 = int(attr.value)
+    attr = line.attributes.itemByName( CC_ATTRIBUTE_GROUP, CC_LINE_PIN2 )
+    cclineData.PIN2 = int(attr.value)
     attr = line.attributes.itemByName( CC_ATTRIBUTE_GROUP, CC_LINE_TEETH )
     cclineData.Teeth = int(attr.value)
     attr = line.attributes.itemByName( CC_ATTRIBUTE_GROUP, CC_LINE_EC )

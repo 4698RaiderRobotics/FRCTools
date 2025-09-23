@@ -47,6 +47,30 @@ motionTypes = (
 )
 motionTypesDefault = motionTypes.index( 'Gears 20DP' )
 
+pinionGears = (
+    '8T (10TCD)',
+    '9T (10TCD)',
+    '10T (12TCD)',
+    '11T (12TCD)',
+    '12T',
+    '12T (14TCD)',
+    '13T (14TCD)',
+    '14T',
+    '14T (16TCD)',
+    '15T (16TCD)',
+    '16T'
+)
+
+pinionCenters = [ 10, 10, 12, 12, 12, 14, 14, 14, 16, 16, 16 ]
+pinionTeeth   = [  8,  9, 10, 11, 12, 12, 13, 14, 14, 15, 16 ]
+# idx              0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10
+# idx => if center < 14:
+#           idx = pinionTeeth - 8
+#        elif center < 16:
+#           idx = pinionTeeth - 7
+#        else:
+#           idx = pinionTeeth - 6
+
 # Executed when add-in is run.
 def start():
 
@@ -61,14 +85,8 @@ def start():
     futil.add_handler(delete_cmd_def.commandCreated, delete_command_created)
 
     # ******** Add a button into the UI so the user can run the command. ********
-    # Get the target workspace the button will be created in.
-    workspace = ui.workspaces.itemById(config.WORKSPACE_ID)
-
-    # Get the panel the button will be created in.
-    panel = workspace.toolbarPanels.itemById(config.SKETCH_CREATE_ID)
-
-    # Find the the FRCTools submenu.
-    submenu = panel.controls.itemById( config.DROPDOWN_ID )
+    # Find the the FRCTools sketch submenu.
+    submenu = config.get_sketch_submenu()
 
     # Create the button command control in the UI.
     control = submenu.controls.addCommand(create_cmd_def)
@@ -85,9 +103,7 @@ def start():
 def stop():
 
     # Get the various UI elements for this command
-    workspace = ui.workspaces.itemById(config.WORKSPACE_ID)
-    panel = workspace.toolbarPanels.itemById(config.SKETCH_CREATE_ID)
-    submenu = panel.controls.itemById( config.DROPDOWN_ID )
+    submenu = config.get_sketch_submenu()
     command_control = submenu.controls.itemById(CREATE_CMD_ID)
     command_definition = ui.commandDefinitions.itemById(CREATE_CMD_ID)
     edit_cmd_def = ui.commandDefinitions.itemById(EDIT_CMD_ID)
@@ -228,9 +244,33 @@ def edit_command_created(args: adsk.core.CommandCreatedEventArgs):
         motionType.listItems.add( mtype, True, '')
     motionType.listItems.item( motionTypesDefault ).isSelected = True
 
-    # Create a integer spinners for cog1 and cog2.
+    # Create a separator.
+    inputs.addSeparatorCommandInput( "selection_cog1_sep")
+
+    # Create a integer spinners for cog1 and pinion options.
     cog1Teeth = inputs.addIntegerSpinnerCommandInput('cog1_teeth', 'Cog #1 Teeth', 8, 100, 1, 36)
+    group1CmdInput = inputs.addGroupCommandInput('use_pinion_cog1', 'Use Pinion')
+    group1CmdInput.isExpanded = False
+    group1CmdInput.isEnabledCheckBoxDisplayed = True
+    group1CmdInput.isEnabledCheckBoxChecked = False
+    groupChildInputs = group1CmdInput.children
+    pinion_cog1 = groupChildInputs.addDropDownCommandInput('pinion_cog1', 'Pinion Gear', adsk.core.DropDownStyles.TextListDropDownStyle)
+    for gear in pinionGears:
+        pinion_cog1.listItems.add( gear, True, '')
+
+
+     # Create a integer spinners for cog1 and pinion options.
     cog2Teeth = inputs.addIntegerSpinnerCommandInput('cog2_teeth', 'Cog #2 Teeth', 8, 100, 1, 24)
+    group2CmdInput = inputs.addGroupCommandInput('use_pinion_cog2', 'Use Pinion')
+    group2CmdInput.isExpanded = False
+    group2CmdInput.isEnabledCheckBoxDisplayed = True
+    group2CmdInput.isEnabledCheckBoxChecked = False
+    groupChildInputs = group2CmdInput.children
+    pinion_cog2 = groupChildInputs.addDropDownCommandInput('pinion_cog2', 'Pinion Gear', adsk.core.DropDownStyles.TextListDropDownStyle)
+    for gear in pinionGears:
+        pinion_cog2.listItems.add( gear, True, '')
+
+    # Addendum Gear Overrides
 
     inputs.addBoolValueInput( "swap_cogs", "Swap Cogs", True )
 
@@ -246,9 +286,34 @@ def edit_command_created(args: adsk.core.CommandCreatedEventArgs):
     lineData = target_CCLine.data
     cog1Teeth.value = lineData.N1
     cog2Teeth.value = lineData.N2
+    if lineData.PIN1 > 0 :
+        group1CmdInput.isEnabledCheckBoxChecked = True
+        cog1Teeth.isVisible = False
+        if lineData.N1 < 14:
+            idx = lineData.PIN1 - 8
+        elif lineData.N1 < 16:
+            idx = lineData.PIN1 - 7
+        else:
+            idx = lineData.PIN1 - 6
+        pinion_cog1.listItems.item( idx ).isSelected = True
+
+    if lineData.PIN2 > 0 :
+        group2CmdInput.isEnabledCheckBoxChecked = True
+        cog2Teeth.isVisible = False
+        if lineData.N2 < 14:
+            idx = lineData.PIN2 - 8
+        elif lineData.N2 < 16:
+            idx = lineData.PIN2 - 7
+        else:
+            idx = lineData.PIN2 - 6
+        pinion_cog2.listItems.item( idx ).isSelected = True
+
     if lineData.motion != 0 :
         beltTeeth.value = lineData.Teeth
         beltTeeth.isVisible = True
+        group1CmdInput.isVisible = False
+        group2CmdInput.isVisible = False
+        
     extraCenter.value = lineData.ExtraCenterIN * 2.54
     motionType.listItems.item( lineData.motion ).isSelected = True
 
@@ -303,9 +368,31 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
     inputs.addBoolValueInput( "require_selection", "Require Selection", True, "", True )
 
-    # Create a integer spinners for cog1 and cog2.
+    # Create a separator.
+    inputs.addSeparatorCommandInput( "selection_cog1_sep")
+
+    # Create a integer spinners for cog1 and pinion options.
     inputs.addIntegerSpinnerCommandInput('cog1_teeth', 'Cog #1 Teeth', 8, 100, 1, 36)
+    groupCmdInput = inputs.addGroupCommandInput('use_pinion_cog1', 'Use Pinion')
+    groupCmdInput.isExpanded = False
+    groupCmdInput.isEnabledCheckBoxDisplayed = True
+    groupCmdInput.isEnabledCheckBoxChecked = False
+    groupChildInputs = groupCmdInput.children
+    pinion_cog1 = groupChildInputs.addDropDownCommandInput('pinion_cog1', 'Pinion Gear', adsk.core.DropDownStyles.TextListDropDownStyle)
+    for gear in pinionGears:
+        pinion_cog1.listItems.add( gear, True, '')
+
+
+     # Create a integer spinners for cog1 and pinion options.
     inputs.addIntegerSpinnerCommandInput('cog2_teeth', 'Cog #2 Teeth', 8, 100, 1, 24)
+    groupCmdInput = inputs.addGroupCommandInput('use_pinion_cog2', 'Use Pinion')
+    groupCmdInput.isExpanded = False
+    groupCmdInput.isEnabledCheckBoxDisplayed = True
+    groupCmdInput.isEnabledCheckBoxChecked = False
+    groupChildInputs = groupCmdInput.children
+    pinion_cog2 = groupChildInputs.addDropDownCommandInput('pinion_cog2', 'Pinion Gear', adsk.core.DropDownStyles.TextListDropDownStyle)
+    for gear in pinionGears:
+        pinion_cog2.listItems.add( gear, True, '')
 
     inputs.addBoolValueInput( "swap_cogs", "Swap Cogs", True )
 
@@ -335,12 +422,16 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
     ccLine = CCLine()
 
-    # Get a reference to your command's inputs.
+    # Get a reference to the command's inputs.
     inputs = args.command.commandInputs
     motionType: adsk.core.DropDownCommandInput = inputs.itemById('motion_type' )
     curveSelection: adsk.core.SelectionCommandInput = inputs.itemById('curve_selection')
     cog1TeethInp: adsk.core.IntegerSpinnerCommandInput = inputs.itemById('cog1_teeth')
+    cog1Group: adsk.core.GroupCommandInput = inputs.itemById('use_pinion_cog1')
+    cog1Pinion: adsk.core.DropDownCommandInput = inputs.itemById('pinion_cog1')
     cog2TeethInp: adsk.core.IntegerSpinnerCommandInput = inputs.itemById('cog2_teeth')
+    cog2Group: adsk.core.GroupCommandInput = inputs.itemById('use_pinion_cog2')
+    cog2Pinion: adsk.core.DropDownCommandInput = inputs.itemById('pinion_cog2')
     swapCogs = inputs.itemById( "swap_cogs" ).value
     beltTeethInp: adsk.core.IntegerSpinnerCommandInput = inputs.itemById( "belt_teeth" )
     extraCenterInp: adsk.core.ValueInput = inputs.itemById('extra_center')
@@ -370,12 +461,24 @@ def command_execute(args: adsk.core.CommandEventArgs):
     ccLine.data.ExtraCenterIN = extraCenterInp.value / 2.54
     ccLine.data.Teeth = int(beltTeethInp.value)
     ccLine.data.N1 = int(cog1TeethInp.value)
+    if cog1Group.isEnabledCheckBoxChecked :
+        ccLine.data.PIN1 = pinionTeeth[ cog1Pinion.selectedItem.index ]
+    else:
+        ccLine.data.PIN1 = 0
     ccLine.data.N2 = int(cog2TeethInp.value)
+    if cog2Group.isEnabledCheckBoxChecked :
+        ccLine.data.PIN2 = pinionTeeth[ cog2Pinion.selectedItem.index ]
+    else:
+        ccLine.data.PIN2 = 0
     ccLine.data.motion = motionType.selectedItem.index
 
     if swapCogs :
-        ccLine.data.N2 = int(cog1TeethInp.value)
-        ccLine.data.N1 = int(cog2TeethInp.value)
+        tempN = ccLine.data.N1
+        ccLine.data.N1 = ccLine.data.N2
+        ccLine.data.N2 = tempN
+        tempN = ccLine.data.PIN1
+        ccLine.data.PIN1 = ccLine.data.PIN2
+        ccLine.data.PIN2 = tempN
 
     preview = False
     if args.firingEvent.name == "OnExecutePreview" :
@@ -404,7 +507,8 @@ def command_preview(args: adsk.core.CommandEventArgs):
 # allowing you to modify values of other inputs based on that change.
 def command_input_changed(args: adsk.core.InputChangedEventArgs):
     changed_input = args.input
-    inputs = args.inputs
+    # inputs = args.inputs
+    inputs = args.input.parentCommand.commandInputs
 
     # General logging for debug.
     futil.log(f'{args.firingEvent.name} Input Changed Event fired from a change to {changed_input.id}')
@@ -412,17 +516,36 @@ def command_input_changed(args: adsk.core.InputChangedEventArgs):
     motionType: adsk.core.DropDownCommandInput = inputs.itemById('motion_type')
     curveSelection: adsk.core.SelectionCommandInput = inputs.itemById('curve_selection')
     cog1Teeth: adsk.core.IntegerSpinnerCommandInput = inputs.itemById('cog1_teeth')
+    cog1Group: adsk.core.GroupCommandInput = inputs.itemById('use_pinion_cog1')
+    cog1Pinion: adsk.core.DropDownCommandInput = inputs.itemById('pinion_cog1')
     cog2Teeth: adsk.core.IntegerSpinnerCommandInput = inputs.itemById('cog2_teeth')
+    cog2Group: adsk.core.GroupCommandInput = inputs.itemById('use_pinion_cog2')
+    cog2Pinion: adsk.core.DropDownCommandInput = inputs.itemById('pinion_cog2')
     beltTeeth: adsk.core.IntegerSpinnerCommandInput = inputs.itemById( "belt_teeth" )
     extraCenter: adsk.core.ValueInput = inputs.itemById('extra_center')
     swapCogsInp = inputs.itemById( "swap_cogs" )
     requireSelectionInp = inputs.itemById( "require_selection" )
 
     if changed_input.id == 'motion_type':
-        if motionType.selectedItem.index == 0:
+        if motionType.selectedItem.index == 0:  
+            # Gear type is selected
             extraCenter.value = 0.003 * 2.54
+            cog1Group.isVisible = True
+            cog2Group.isVisible = True
+            beltTeeth.isVisible = False
         else:
+            # Non-gear type is selected
             extraCenter.value = 0
+            cog1Teeth.isVisible = True
+            cog1Group.isVisible = False
+            cog1Group.isEnabledCheckBoxChecked = False
+            cog2Teeth.isVisible = True
+            cog2Group.isVisible = False
+            cog2Group.isEnabledCheckBoxChecked = False
+            if beltTeeth.value == 0 :
+                beltTeeth.value = 70
+            beltTeeth.isVisible = True
+
 
     if changed_input.id == 'require_selection':
         if requireSelectionInp.value:
@@ -467,12 +590,30 @@ def command_input_changed(args: adsk.core.InputChangedEventArgs):
             # else:
             #     beltTeeth.isVisible = True
 
-    if motionType.selectedItem.index == 0 :
-        beltTeeth.isVisible = False
-    else:
-        if beltTeeth.value == 0 :
-            beltTeeth.value = 70
-        beltTeeth.isVisible = True
+    if changed_input.id == 'use_pinion_cog1':
+        if cog1Group.isEnabledCheckBoxChecked:
+            # We are using a pinion for cog 1
+            cog1Teeth.isVisible = False
+            cog1Teeth.value = pinionCenters[ cog1Pinion.selectedItem.index ]
+        else:
+            # We are not using a pinion 
+            cog1Teeth.isVisible = True
+
+    if changed_input.id == 'pinion_cog1':
+        cog1Teeth.value = pinionCenters[ cog1Pinion.selectedItem.index ]
+
+
+    if changed_input.id == 'use_pinion_cog2':
+        if cog2Group.isEnabledCheckBoxChecked:
+            # We are using a pinion for cog 2
+            cog2Teeth.isVisible = False
+            cog2Teeth.value = pinionCenters[ cog2Pinion.selectedItem.index ]
+        else:
+            # We are not using a pinion 
+            cog2Teeth.isVisible = True
+
+    if changed_input.id == 'pinion_cog2':
+        cog2Teeth.value = pinionCenters[ cog2Pinion.selectedItem.index ]
 
 
 # This event handler is called when the user interacts with any of the inputs in the dialog
@@ -606,11 +747,9 @@ def dimAndLabelCCLine( ccLine: CCLine ) :
 
     # Create SketchText and attach it to the C-C Line
     label = createLabelString( ld )
-    textHeight = int((ld.ccDistIN + 1)) / 32.0
-    if textHeight < 0.02:
-        textHeight = 0.02
+    textHeight = computeTextSizeIN( ld ) * 2.54 # in cm
+
     # futil.log( f'ccDist = {ld.ccDistIN}in, Text Height = {textHeight}in')
-    textHeight = textHeight * 2.54 # in cm
     cornerPt = line.startSketchPoint.geometry
     diagPt =  futil.addPoint3D( cornerPt, adsk.core.Point3D.create( line.length, textHeight, 0 ) )
     textInput = sketch.sketchTexts.createInput2( label, textHeight )
@@ -645,7 +784,12 @@ def dimAndLabelCCLine( ccLine: CCLine ) :
 
 def createLabelString( ld: CCLineData ) -> str:
     if ld.motion == 0:
-        lineLabel = f'Gears 20DP ({ld.N1}T+{ld.N2}T)'
+        if ld.PIN1 > 0 and ld.PIN1 != ld.N1 :
+            lineLabel = f'Gear 20DP {ld.PIN1}T({ld.N1}T-CD)+{ld.N2}T'
+        elif ld.PIN2 > 0 and ld.PIN2 != ld.N2 :
+            lineLabel = f'Gear 20DP {ld.N1}T+{ld.PIN2}T({ld.N2}T-CD)'
+        else:
+            lineLabel = f'Gear 20DP {ld.N1}T+{ld.N2}T'
     else :
         if ld.motion == 1:
     #         # HTD 5mm Belt
@@ -704,6 +848,13 @@ def createCirclePair( line: adsk.fusion.SketchLine,
 
     return ([ startCircle, endCircle ], [diaDim1, diaDim2])
 
+def computeTextSizeIN( ld: CCLineData ) -> float:
+    textHeight = ld.ccDistIN / 28.0
+    if textHeight < 0.025:
+        textHeight = 0.025
+
+    return textHeight
+
 def modifyCCLine( ccLine: CCLine ):
 
     ld = ccLine.data
@@ -716,6 +867,8 @@ def modifyCCLine( ccLine: CCLine ):
 
     label = createLabelString( ld )
     ccLine.textBox.text = label
+    ccLine.textBox.height = computeTextSizeIN( ld ) * 2.54
+    ccLine.textHeight.value = ccLine.textBox.height * 2.0
 
     ccLine.PD1Dim.value = ld.PD1 * 2.54
     ccLine.PD2Dim.value = ld.PD2 * 2.54

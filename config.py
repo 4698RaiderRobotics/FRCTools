@@ -3,6 +3,10 @@
 # modules (global variables).
 
 import os
+import adsk.core
+
+app = adsk.core.Application.get()
+ui = app.userInterface
 
 # Flag that indicates to run in Debug mode or not. When running in Debug mode
 # more information is written to the Text Command window. Generally, it's useful
@@ -18,10 +22,30 @@ ADDIN_NAME = os.path.basename(os.path.dirname(__file__))
 COMPANY_NAME = 'Team4698'
 
 # Palettes
-sample_palette_id = f'{COMPANY_NAME}_{ADDIN_NAME}_palette_id'
+# sample_palette_id = f'{COMPANY_NAME}_{ADDIN_NAME}_palette_id'
 
 # Toolbar stuff
 WORKSPACE_ID = 'FusionSolidEnvironment'
-PANEL_ID = 'SolidCreatePanel'
+SOLID_CREATE_ID = 'SolidCreatePanel'
 SKETCH_CREATE_ID = 'SketchCreatePanel'
-DROPDOWN_ID = 'FRCToolsSubMenu'
+FRC_TOOLS_DROPDOWN_ID = 'FRCToolsSubMenu'
+
+def get_sketch_submenu() -> adsk.core.ToolbarControl:
+    # Get the target workspace the button will be created in.
+    workspace = ui.workspaces.itemById( WORKSPACE_ID )
+
+    # Get the sketch panel the button will be created in.
+    panel = workspace.toolbarPanels.itemById( SKETCH_CREATE_ID )
+
+    # Find the the FRCTools submenu.
+    return panel.controls.itemById( FRC_TOOLS_DROPDOWN_ID )
+
+def get_solid_submenu() -> adsk.core.ToolbarControl:
+    # Get the target workspace the button will be created in.
+    workspace = ui.workspaces.itemById( WORKSPACE_ID )
+
+    # Get the solid panel the button will be created in.
+    panel = workspace.toolbarPanels.itemById( SOLID_CREATE_ID )
+
+    # Find the the FRCTools submenu.
+    return panel.controls.itemById( FRC_TOOLS_DROPDOWN_ID )
