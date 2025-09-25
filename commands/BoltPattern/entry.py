@@ -58,7 +58,7 @@ def start():
 
     # ******** Add a button into the UI so the user can run the command. ********
     # Find the the FRCTools submenu.
-    submenu = config.get_sketch_submenu()
+    submenu = config.get_sketch_create_submenu()
 
     # Create the button command control in the UI.
     control = submenu.controls.addCommand(cmd_def)
@@ -71,7 +71,7 @@ def stop():
     global edit_cmd_def
 
     # Get the various UI elements for this command
-    submenu = config.get_sketch_submenu()
+    submenu = config.get_sketch_create_submenu()
     command_control = submenu.controls.itemById(CMD_ID)
     command_definition = ui.commandDefinitions.itemById(CMD_ID)
 

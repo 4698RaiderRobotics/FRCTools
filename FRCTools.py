@@ -14,13 +14,15 @@ def run(context):
         # Get the target workspace the button will be created in.
         workspace = ui.workspaces.itemById( config.WORKSPACE_ID )
 
-        # Get the panel the button will be created in.
-        solidpanel = workspace.toolbarPanels.itemById( config.SOLID_CREATE_ID )
-        sketchpanel = workspace.toolbarPanels.itemById( config.SKETCH_CREATE_ID )
+        # Get the panel the FRCTools dropdown will be created in.
+        solid_panel = workspace.toolbarPanels.itemById( config.SOLID_CREATE_ID )
+        sketch_create_panel = workspace.toolbarPanels.itemById( config.SKETCH_CREATE_ID )
+        sketch_modify_panel = workspace.toolbarPanels.itemById( config.SKETCH_MODIFY_ID )
 
-        # Create the the FRCTool submenu in sketch and solid panels.
-        submenu = solidpanel.controls.addDropDown( "FRCTools", "", config.FRC_TOOLS_DROPDOWN_ID )
-        submenu = sketchpanel.controls.addDropDown( "FRCTools", "", config.FRC_TOOLS_DROPDOWN_ID )
+        # Create the the FRCTool submenu in the solid-create, sketch-create, and sketch-modify panels.
+        solid_panel.controls.addDropDown( "FRCTools", "", config.FRC_TOOLS_DROPDOWN_ID )
+        sketch_create_panel.controls.addDropDown( "FRCTools", "", config.FRC_TOOLS_DROPDOWN_ID )
+        sketch_modify_panel.controls.addDropDown( "FRCTools", "", config.FRC_TOOLS_DROPDOWN_ID )
 
         # This will run the start function in each of your commands as defined in commands/__init__.py
         commands.start()
@@ -38,19 +40,24 @@ def stop(context):
         commands.stop()
 
         workspace = ui.workspaces.itemById(config.WORKSPACE_ID)
-        solidpanel = workspace.toolbarPanels.itemById(config.SOLID_CREATE_ID)
-        submenu = solidpanel.controls.itemById( config.FRC_TOOLS_DROPDOWN_ID )
+        solid_panel = workspace.toolbarPanels.itemById( config.SOLID_CREATE_ID )
+        sketch_create_panel = workspace.toolbarPanels.itemById( config.SKETCH_CREATE_ID )
+        sketch_modify_panel = workspace.toolbarPanels.itemById( config.SKETCH_MODIFY_ID )
 
-        # Delete the FRCTools submenu
-        if submenu:
-            submenu.deleteMe()
+        solid_submenu = solid_panel.controls.itemById( config.FRC_TOOLS_DROPDOWN_ID )
+        # Delete the Solid->Create FRCTools submenu
+        if solid_submenu:
+            solid_submenu.deleteMe()
 
-        sketchpanel = workspace.toolbarPanels.itemById(config.SKETCH_CREATE_ID)
-        submenu = sketchpanel.controls.itemById( config.FRC_TOOLS_DROPDOWN_ID )
+        sketch_create_submenu = sketch_create_panel.controls.itemById( config.FRC_TOOLS_DROPDOWN_ID )
+        # Delete Sketch->Create FRCTools submenu
+        if sketch_create_submenu:
+            sketch_create_submenu.deleteMe()
 
-        # Delete the FRCTools submenu
-        if submenu:
-            submenu.deleteMe()
+        sketch_modify_submenu = sketch_modify_panel.controls.itemById( config.FRC_TOOLS_DROPDOWN_ID )
+        # Delete Sketch->Modify FRCTools submenu
+        if sketch_modify_submenu:
+            sketch_modify_submenu.deleteMe()
 
     except:
         futil.handle_error('stop')

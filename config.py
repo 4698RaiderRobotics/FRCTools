@@ -28,14 +28,25 @@ COMPANY_NAME = 'Team4698'
 WORKSPACE_ID = 'FusionSolidEnvironment'
 SOLID_CREATE_ID = 'SolidCreatePanel'
 SKETCH_CREATE_ID = 'SketchCreatePanel'
+SKETCH_MODIFY_ID = 'SketchModifyPanel'
 FRC_TOOLS_DROPDOWN_ID = 'FRCToolsSubMenu'
 
-def get_sketch_submenu() -> adsk.core.ToolbarControl:
+def get_sketch_create_submenu() -> adsk.core.ToolbarControl:
     # Get the target workspace the button will be created in.
     workspace = ui.workspaces.itemById( WORKSPACE_ID )
 
     # Get the sketch panel the button will be created in.
     panel = workspace.toolbarPanels.itemById( SKETCH_CREATE_ID )
+
+    # Find the the FRCTools submenu.
+    return panel.controls.itemById( FRC_TOOLS_DROPDOWN_ID )
+
+def get_sketch_modify_submenu() -> adsk.core.ToolbarControl:
+    # Get the target workspace the button will be created in.
+    workspace = ui.workspaces.itemById( WORKSPACE_ID )
+
+    # Get the sketch panel the button will be created in.
+    panel = workspace.toolbarPanels.itemById( SKETCH_MODIFY_ID )
 
     # Find the the FRCTools submenu.
     return panel.controls.itemById( FRC_TOOLS_DROPDOWN_ID )
