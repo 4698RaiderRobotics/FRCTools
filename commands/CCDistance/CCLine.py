@@ -132,16 +132,25 @@ def getLineData( line: adsk.fusion.SketchLine ) -> CCLineData :
     cclineData.N1 = int(attr.value)
     attr = line.attributes.itemByName( CC_ATTRIBUTE_GROUP, CC_LINE_N2 )
     cclineData.N2 = int(attr.value)
-    attr = line.attributes.itemByName( CC_ATTRIBUTE_GROUP, CC_LINE_PIN1 )
-    cclineData.PIN1 = int(attr.value)
-    attr = line.attributes.itemByName( CC_ATTRIBUTE_GROUP, CC_LINE_PIN2 )
-    cclineData.PIN2 = int(attr.value)
     attr = line.attributes.itemByName( CC_ATTRIBUTE_GROUP, CC_LINE_TEETH )
     cclineData.Teeth = int(attr.value)
     attr = line.attributes.itemByName( CC_ATTRIBUTE_GROUP, CC_LINE_EC )
     cclineData.ExtraCenterIN = float(attr.value)
     attr = line.attributes.itemByName( CC_ATTRIBUTE_GROUP, CC_LINE_MOTION_TYPE )
     cclineData.motion = int(attr.value)
+
+    # CCLines before 1.1.0 don't have these attributes...
+    try:
+        attr = line.attributes.itemByName( CC_ATTRIBUTE_GROUP, CC_LINE_PIN1 )
+        cclineData.PIN1 = int(attr.value)
+    except:
+        cclineData.PIN1 = 0
+
+    try:
+        attr = line.attributes.itemByName( CC_ATTRIBUTE_GROUP, CC_LINE_PIN2 )
+        cclineData.PIN2 = int(attr.value)
+    except:
+        cclineData.PIN2 = 0
 
     return cclineData
 
