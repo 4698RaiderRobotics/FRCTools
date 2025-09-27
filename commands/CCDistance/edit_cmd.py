@@ -23,7 +23,7 @@ local_handlers = []
 def edit_command_created(args: adsk.core.CommandCreatedEventArgs):
     # global target_CCLine
     
-    # futil.log(f'{args.command.parentCommandDefinition.name} edit_command_created()')
+    futil.log(f'{args.command.parentCommandDefinition.name} edit_command_created()')
 
     # Connect to the events that are needed by this command.
     futil.add_handler(args.command.execute, edit_command_execute, local_handlers=local_handlers)
@@ -45,10 +45,10 @@ def edit_command_created(args: adsk.core.CommandCreatedEventArgs):
 
     # Create a selection input.
     curveSelection = inputs.addSelectionInput('curve_selection', 'Selection', 'Select a C-C Distance object')
-    curveSelection.addSelectionFilter( "SketchCircles" )
-    curveSelection.addSelectionFilter( "SketchLines" )
-    curveSelection.addSelectionFilter( "SketchConstraints" )
-    curveSelection.addSelectionFilter( "Texts" )
+    # curveSelection.addSelectionFilter( "SketchCircles" )
+    # curveSelection.addSelectionFilter( "SketchLines" )
+    # curveSelection.addSelectionFilter( "SketchConstraints" )
+    # curveSelection.addSelectionFilter( "Texts" )
     curveSelection.setSelectionLimits( 3, 3 )
 
     # Create a separator.
@@ -119,7 +119,7 @@ def edit_command_preselect(args: adsk.core.SelectionEventArgs):
 # to select it.
 def edit_command_select(args: adsk.core.SelectionEventArgs):
 
-    # futil.log( f'edit_command_select - selected = {args.activeInput.selectionCount}' )
+    futil.log( f'edit_command_select - selected = {args.activeInput.selectionCount}' )
     
     ccLine = CCLine.getCCLineFromEntity(args.selection.entity)
     if not ccLine:
@@ -142,7 +142,7 @@ def edit_command_input_changed(args: adsk.core.InputChangedEventArgs):
     inputs = args.input.parentCommand.commandInputs
 
     # General logging for debug.
-    # futil.log(f'{args.firingEvent.name} Input Changed Event fired from a change to {changed_input.id}')
+    futil.log(f'{args.firingEvent.name} Input Changed Event fired from a change to {changed_input.id}')
 
     motionType: adsk.core.DropDownCommandInput = inputs.itemById('motion_type')
     curveSelection: adsk.core.SelectionCommandInput = inputs.itemById('curve_selection')
@@ -301,7 +301,7 @@ def initialize_input_state( inputs: adsk.core.CommandInputs, lineData: CCLine.CC
 def edit_command_execute(args: adsk.core.CommandEventArgs):
 
     # General logging for debug.
-    # futil.log(f'{args.command.parentCommandDefinition.name} Edit Command Execute Event')
+    futil.log(f'{args.command.parentCommandDefinition.name} Edit Command Execute Event')
 
     ccLine = None
 
