@@ -4,7 +4,7 @@ import os
 import math
 from ...lib import fusionAddInUtils as futil
 from ... import config
-from ...lib.CCLine import *
+from ..CCDistance.CCLine import *
 
 app = adsk.core.Application.get()
 ui = app.userInterface

@@ -4,7 +4,7 @@ import adsk.fusion
 import math
 # from ...lib import fusionAddInUtils as futil
 # from ... import config
-from ...lib.CCLine import *
+from .CCLine import *
 
 app = adsk.core.Application.get()
 # ui = app.userInterface
@@ -233,6 +233,8 @@ def computeTextSizeIN( ld: CCLineData ) -> float:
     textHeight = ld.ccDistIN / 28.0
     if textHeight < 0.025:
         textHeight = 0.025
+    elif textHeight > 0.25:
+        textHeight = 0.25
 
     return textHeight
 
@@ -243,7 +245,7 @@ def modifyCCLine( ccLine: CCLine ):
     try:
         ccLine.lengthDim.value = (ld.ccDistIN + ld.ExtraCenterIN) * 2.54
     except:
-        futil.popup_error( 'Failed to resize centerline!  Are both ends of C-C Distance constrained?', True )
+        futil.popup_error( f'Failed to resize centerline to length={(ld.ccDistIN + ld.ExtraCenterIN)}in!  Are both ends of C-C Distance constrained?' )
         return
 
     label = createLabelString( ld )

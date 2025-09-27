@@ -12,10 +12,17 @@ Download the https://github.com/4698RaiderRobotics/FRCTools/releases[latest rele
 After installation close Fusion if it was open and reopen it.  The FRCTools Add-In should be enabled by default.  For more information on installing Add-Ins see https://www.autodesk.com/support/technical/article/caas/sfdcarticles/sfdcarticles/How-to-install-an-ADD-IN-and-Script-in-Fusion-360.html[How to install Add-Ins^].  For more information on disabling Add-Ins see https://help.autodesk.com/view/fusion360/ENU/?guid=SLD-MANAGE-SCRIPTS-ADD-INS[Managing Scripts and Add-Ins^].
 
 == Sketch Tab Tools
-=== C-C Distance Tool image:icons/CCDistance.png['C-C Distance', 30]
+=== Create C-C Distance Tool image:icons/CCDistance.png['C-C Distance', 30]
 TIP: kbd:[Sketch Tab] menu:Create[FRCTools > C-C Distance]
 
-This tool is a Center-to-Center Distance Calculator for 20DP Gears, HTD 5mm Belts, and GT2 3mm Belts.  It creates a set of linked sketch entities that represent the C-C Distance, pitch diameter circles, OD circles and a text label.  The linked entities can be edited as a unit.  Deleting any part of the C-C Distance will delete all of it.  The C-C Distance can be edited by right clicking on it and selecting `Edit C-C Distance` or by selecting an existing C-C Distance within the C-C Distance command.
+This tool creates a Center-to-Center Distance object.  It determines the correct spacing for 20DP Gears, HTD 5mm Belts, and GT2 3mm Belts.  It also creates a set of linked sketch entities that represent the C-C Distance, pitch diameter circles, OD circles and a text label that effectively documents the parameters used to find the spacing in the sketch.  Deleting any part of the C-C Distance will delete all of it.  The C-C Distance can be edited by right clicking on it and selecting `Edit C-C Distance` or by selecting an existing C-C Distance within the C-C Distance command.
+
+image::CCDistanceCreate.png[]
+
+=== Edit C-C Distance Tool image:icons/CCDistance.png['C-C Distance', 30]
+TIP: kbd:[Sketch Tab] menu:Modify[FRCTools > C-C Distance]
+
+This tool allows for the editing of an existing C-C Distance object. The C-C Distance can be edited by right clicking on it and selecting `Edit C-C Distance` from the popup menu or by selecting an existing C-C Distance within the C-C Distance command. The linked entities can be edited as a unit.  Deleting any part of the C-C Distance will delete all of it.  The C-C Distance can be edited by right clicking on it and selecting `Edit C-C Distance` or by selecting an existing C-C Distance within the C-C Distance command.
 
 image::CCDistanceEdit.png[]
 

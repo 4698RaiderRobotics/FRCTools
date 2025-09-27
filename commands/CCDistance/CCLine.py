@@ -1,6 +1,6 @@
 import adsk.core
 import adsk.fusion
-from . import fusionAddInUtils as futil
+from ...lib import fusionAddInUtils as futil
 
 
 
