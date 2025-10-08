@@ -233,6 +233,8 @@ def command_preview(args: adsk.core.CommandEventArgs):
     if not ControlKeyHeldDown :
         command_execute( args )
         args.isValidResult = True
+        # This was needed once debugging output was turned off....
+        app.activeViewport.refresh()
 
 # This event handler is called when the user changes anything in the command dialog
 # allowing you to modify values of other inputs based on that change.
