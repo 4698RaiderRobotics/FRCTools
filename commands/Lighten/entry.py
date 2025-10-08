@@ -5,6 +5,17 @@ import math
 import time
 from ...lib import fusionAddInUtils as futil
 from ... import config
+
+
+# Attempt a rewrite of the Lighten Routine using the TemporaryBRepManager and Surfaces 
+# created with Wires that are themselves created with the profile Curve3D objects.
+
+
+# See:
+# BRepWire.offsetPlanarWire
+
+
+
 app = adsk.core.Application.get()
 ui = app.userInterface
 
@@ -31,6 +42,7 @@ class LightenProfile:
     offsetDist: float = 0.0
     filletRadius: float = 0.0
     outerLoop: adsk.fusion.ProfileLoop = None
+    offsetBody: adsk.fusion.BRepBody = None
     centroid: adsk.core.Point3D = None
     area: float = 0.0
 
@@ -166,6 +178,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
     for profile in lightenProfileList:
         if not profile.isComputed :
             ComputesNeeded += 1
+
     
     ui.progressBar.show( '%p Done. Processing Profile %v of %m', 0, ComputesNeeded + 1 )
     try:
@@ -177,8 +190,10 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 i += 1
                 ui.progressBar.progressValue = i
                 adsk.doEvents()
-                offsetProfile( profile )
+                # offsetProfile( profile )
+                offsetProfileTempBrep( profile )
 
+        start_timeline_pos = solid.parentComponent.parentDesign.timeline.markerPosition
         # Create a sketch for the offset profiles.
         workingComp = solid.parentComponent
         sketch: adsk.fusion.Sketch = workingComp.sketches.add( profileSelection.selection(0).entity )
@@ -203,6 +218,12 @@ def command_execute(args: adsk.core.CommandEventArgs):
         futil.handle_error( '        ============  Lighten Failed  ============\n\n', True )
 
     ui.progressBar.hide()
+
+    # Create command group for the Lighten timeline features
+    end_timeline_pos = solid.parentComponent.parentDesign.timeline.markerPosition - 1
+    # futil.log(f"Lighten -- Creating Group from {start_timeline_pos} to {end_timeline_pos}")
+    grp = solid.parentComponent.parentDesign.timeline.timelineGroups.add( start_timeline_pos, end_timeline_pos )
+    grp.name = "Lighten"
 
 # This event handler is called when the command needs to compute a new preview in the graphics window.
 def command_preview(args: adsk.core.CommandEventArgs):
@@ -413,6 +434,57 @@ def offsetProfile( profile: LightenProfile ) :
     sketch.deleteMe()
     return
 
+# Find the offset profile using the Temporary Breps :
+def offsetProfileTempBrep( profile: LightenProfile ) :
+    # Get the temporary Brep manager
+    tempBrepMgr = adsk.fusion.TemporaryBRepManager.get()
+
+    profileCurves = []
+    for p in profile.outerLoop.profileCurves:
+        profileCurves.append( p.geometry )
+
+    body, edgeMap = tempBrepMgr.createWireFromCurves( profileCurves )
+    futil.log( f'Number of BrepWires = {body.wires.count}.')
+
+    wire = body.wires.item(0)
+
+    PosOffsetBody = wire.offsetPlanarWire( profile.profile.plane.normal, profile.offsetDist, 
+                                        adsk.fusion.OffsetCornerTypes.ExtendedOffsetCornerType )
+    PosPerimeter = 0.0
+    for edge in PosOffsetBody.wires.item(0).edges:
+        eval = edge.evaluator
+        success, min, max = eval.getParameterExtents()
+        success, length = eval.getLengthAtParameter( min, max )
+        PosPerimeter += length
+
+    NegOffsetBody = wire.offsetPlanarWire( profile.profile.plane.normal, -profile.offsetDist, 
+                                        adsk.fusion.OffsetCornerTypes.ExtendedOffsetCornerType )
+    NegPerimeter = 0.0
+    for coEdge in NegOffsetBody.wires.item(0).edges:
+        eval = coEdge.evaluator
+        success, min, max = eval.getParameterExtents()
+        success, length = eval.getLengthAtParameter( min, max )
+        NegPerimeter += length
+
+    futil.log( f'PosPerimeter = {PosPerimeter}, NegPerimeter = {NegPerimeter}.')
+    if( PosPerimeter > NegPerimeter ) :
+        profile.offsetBody = NegOffsetBody
+    else:
+        profile.offsetBody = PosOffsetBody
+
+    futil.log( f'Number of offset BrepWires = {profile.offsetBody.wires.count}.')
+    futil.log( f'Number of offset coedges = {profile.offsetBody.wires.item(0).coEdges.count}.')
+
+    profile.filletedLoops = []
+    for wire in profile.offsetBody.wires:
+        profloop = []
+        for e in wire.coEdges:
+            profloop.append( e.edge.geometry )
+        profile.filletedLoops.append( profloop )
+
+    profile.isComputed = True
+    
+
 def extrudeProfiles( solid: adsk.fusion.BRepBody, sketch: adsk.fusion.Sketch, depth: float ) -> adsk.fusion.ExtrudeFeature :
 
     extrudeProfiles = adsk.core.ObjectCollection.create()
@@ -425,7 +497,7 @@ def extrudeProfiles( solid: adsk.fusion.BRepBody, sketch: adsk.fusion.Sketch, de
     extrudeCut.setOneSideExtent( distance, adsk.fusion.ExtentDirections.NegativeExtentDirection )
     extrudeCut.participantBodies = [ solid ]
     extrudeFeature = extrudes.add( extrudeCut )
-    extrudeFeature
+#    extrudeFeature
 
     return extrudeFeature
 
@@ -485,10 +557,33 @@ def filletProfiles( solid: adsk.fusion.BRepBody, extrudeFeat: adsk.fusion.Extrud
     futil.log(f'Processed edges = {i}, PerpAndTouching = {perpAndTouchingEdges.count}, perp edges = {perpendicularEdges.count}')
 
     fillets = solid.parentComponent.features.filletFeatures
-    filletFeatureInput = fillets.createInput()
     filletRadius = adsk.core.ValueInput.createByReal( cornerRadius )
+    filletFeatureInput = fillets.createInput()
     edgeSet = filletFeatureInput.edgeSetInputs.addConstantRadiusEdgeSet( perpendicularEdges, filletRadius, False)
-    fillets.add( filletFeatureInput )
+    futil.log( f'Round 1 - Input Fillet feature edgeset count = {edgeSet.entities.count}')
+    newFillet = fillets.add( filletFeatureInput )
+    futil.log( f'Round 1 - Output Fillet faces count = {newFillet.faces.count}')
+
+    round = 2
+    while round < 6:
+        perpendicularEdges = adsk.core.ObjectCollection.create()
+        for s in newFillet.faces:
+            for edge in s.edges:
+                if edge.geometry.objectType == adsk.core.Line3D.classType():
+                    line:adsk.core.Line3D = edge.geometry
+                    if plane.isPerpendicularToLine( line ) and len(plane.intersectWithCurve(line)) > 0 :
+                        if not perpendicularEdges.contains( edge ) :
+                            perpendicularEdges.add( edge )
+        
+        filletFeatureInput = fillets.createInput()
+        edgeSet = filletFeatureInput.edgeSetInputs.addConstantRadiusEdgeSet( perpendicularEdges, filletRadius, False)
+        futil.log( f'Round {round} - Input Fillet feature edgeset count = {edgeSet.entities.count}')
+        newFillet = fillets.add( filletFeatureInput )
+        futil.log( f'Round {round} - Output Fillet faces count = {newFillet.faces.count}')
+        if newFillet.faces.count == 0 :
+            newFillet.deleteMe()
+            break
+        round += 1
 
     return
 
