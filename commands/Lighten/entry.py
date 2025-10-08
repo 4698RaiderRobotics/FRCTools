@@ -42,7 +42,7 @@ class LightenProfile:
     offsetDist: float = 0.0
     filletRadius: float = 0.0
     outerLoop: adsk.fusion.ProfileLoop = None
-    offsetBody: adsk.fusion.BRepBody = None
+    offsetFace: adsk.fusion.BRepBody = None
     centroid: adsk.core.Point3D = None
     area: float = 0.0
 
@@ -161,7 +161,8 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 # is immediately called after the created event not command inputs were created for the dialog.
 def command_execute(args: adsk.core.CommandEventArgs):
     # General logging for debug.
-    # futil.log(f'{CMD_NAME} Command Execute Event')
+    start_time = time.process_time()
+    futil.log(f'{CMD_NAME} Command Execute Event, Starting....')
 
     global lightenProfileList
 
@@ -185,6 +186,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
         i = 0
         # If the profile is not computed then calculate the offset
         # and store it as Curve3D objects in the LightenProfile object
+        futil.log(f'    Starting offset profiles at = {time.process_time()-start_time}')
         for profile in lightenProfileList:
             if not profile.isComputed :
                 i += 1
@@ -198,17 +200,22 @@ def command_execute(args: adsk.core.CommandEventArgs):
         workingComp = solid.parentComponent
         sketch: adsk.fusion.Sketch = workingComp.sketches.add( profileSelection.selection(0).entity )
         sketch.name = 'Lighten'
+        sketch.isLightBulbOn = False
+        sketch.isComputeDeferred = True
 
         # Draw the Curve3D objects in the sketch
+        futil.log(f'    Starting sketch creation at = {time.process_time()-start_time}')
         for profile in lightenProfileList:
             if profile.isComputed:
-                for loop in profile.filletedLoops:
-                    Curves3DToSketch( sketch, loop )
+                PlanarFacesToSketch( sketch, profile )
+                # for loop in profile.filletedLoops:
+                #     Curves3DToSketch( sketch, loop )
 
         ui.progressBar.progressValue = i + 1
         adsk.doEvents()
 
         # Extrude and fillet the profiles in the sketch
+        futil.log(f'    Starting extrude and fillet at = {time.process_time()-start_time}')
         if sketch.profiles.count > 0 :
             extrudeFeat = extrudeProfiles( solid, sketch, pocketDepth.value )
             if not disableFillet.value:
@@ -218,12 +225,14 @@ def command_execute(args: adsk.core.CommandEventArgs):
         futil.handle_error( '        ============  Lighten Failed  ============\n\n', True )
 
     ui.progressBar.hide()
+    sketch.isComputeDeferred = False
 
     # Create command group for the Lighten timeline features
     end_timeline_pos = solid.parentComponent.parentDesign.timeline.markerPosition - 1
     # futil.log(f"Lighten -- Creating Group from {start_timeline_pos} to {end_timeline_pos}")
     grp = solid.parentComponent.parentDesign.timeline.timelineGroups.add( start_timeline_pos, end_timeline_pos )
     grp.name = "Lighten"
+    futil.log(f'    Done Lighten command execute time = {time.process_time()-start_time}')
 
 # This event handler is called when the command needs to compute a new preview in the graphics window.
 def command_preview(args: adsk.core.CommandEventArgs):
@@ -452,37 +461,38 @@ def offsetProfileTempBrep( profile: LightenProfile ) :
 
     PosOffsetBody = wire.offsetPlanarWire( profile.profile.plane.normal, profile.offsetDist, 
                                         adsk.fusion.OffsetCornerTypes.ExtendedOffsetCornerType )
-    PosPerimeter = 0.0
-    for edge in PosOffsetBody.wires.item(0).edges:
-        eval = edge.evaluator
-        success, min, max = eval.getParameterExtents()
-        success, length = eval.getLengthAtParameter( min, max )
-        PosPerimeter += length
+    PosFace = tempBrepMgr.createFaceFromPlanarWires( [PosOffsetBody] )
+    PosArea = PosFace.area
+    # for edge in PosOffsetBody.wires.item(0).edges:
+    #     eval = edge.evaluator
+    #     success, min, max = eval.getParameterExtents()
+    #     success, length = eval.getLengthAtParameter( min, max )
+    #     PosPerimeter += length
 
     NegOffsetBody = wire.offsetPlanarWire( profile.profile.plane.normal, -profile.offsetDist, 
                                         adsk.fusion.OffsetCornerTypes.ExtendedOffsetCornerType )
-    NegPerimeter = 0.0
-    for coEdge in NegOffsetBody.wires.item(0).edges:
-        eval = coEdge.evaluator
-        success, min, max = eval.getParameterExtents()
-        success, length = eval.getLengthAtParameter( min, max )
-        NegPerimeter += length
+    NegFace = tempBrepMgr.createFaceFromPlanarWires( [NegOffsetBody] )
+    NegArea = NegFace.area
 
-    futil.log( f'PosPerimeter = {PosPerimeter}, NegPerimeter = {NegPerimeter}.')
-    if( PosPerimeter > NegPerimeter ) :
-        profile.offsetBody = NegOffsetBody
+    # NegPerimeter = 0.0
+    # for coEdge in NegOffsetBody.wires.item(0).edges:
+    #     eval = coEdge.evaluator
+    #     success, min, max = eval.getParameterExtents()
+    #     success, length = eval.getLengthAtParameter( min, max )
+    #     NegPerimeter += length
+
+    futil.log( f'PosArea = {PosArea}, NegArea = {NegArea}.')
+    if( PosArea > NegArea ) :
+        profile.offsetFace = NegFace
     else:
-        profile.offsetBody = PosOffsetBody
+        profile.offsetFace = PosFace
 
-    futil.log( f'Number of offset BrepWires = {profile.offsetBody.wires.count}.')
-    futil.log( f'Number of offset coedges = {profile.offsetBody.wires.item(0).coEdges.count}.')
-
-    profile.filletedLoops = []
-    for wire in profile.offsetBody.wires:
-        profloop = []
-        for e in wire.coEdges:
-            profloop.append( e.edge.geometry )
-        profile.filletedLoops.append( profloop )
+    # profile.filletedLoops = []
+    # for wire in profile.offsetBody.wires:
+    #     profloop = []
+    #     for e in wire.coEdges:
+    #         profloop.append( e.edge.geometry )
+    #     profile.filletedLoops.append( profloop )
 
     profile.isComputed = True
     
@@ -495,6 +505,26 @@ def extrudeProfiles( solid: adsk.fusion.BRepBody, sketch: adsk.fusion.Sketch, de
     extrudes = sketch.parentComponent.features.extrudeFeatures
     cutDistance = adsk.core.ValueInput.createByReal( depth )
     extrudeCut = extrudes.createInput( extrudeProfiles, adsk.fusion.FeatureOperations.CutFeatureOperation)
+    distance = adsk.fusion.DistanceExtentDefinition.create( cutDistance )
+    extrudeCut.setOneSideExtent( distance, adsk.fusion.ExtentDirections.NegativeExtentDirection )
+    extrudeCut.participantBodies = [ solid ]
+    extrudeFeature = extrudes.add( extrudeCut )
+#    extrudeFeature
+
+    return extrudeFeature
+
+def extrudeProfilesTempBrep( solid: adsk.fusion.BRepBody, profile: LightenProfile, depth: float ) -> adsk.fusion.ExtrudeFeature :
+
+    futil.log( f'Extruding face, count = {profile.offsetFace.faces.count}')
+
+    # extrudeProfiles = adsk.core.ObjectCollection.create()
+    # extrudeProfiles.add( profile.offsetFace.faces.item(0) )
+    occ = solid.parentComponent.occurrences.item(0)
+    face = profile.offsetFace.faces.item(0).createForAssemblyContext(occ)
+
+    extrudes = solid.parentComponent.features.extrudeFeatures
+    cutDistance = adsk.core.ValueInput.createByReal( depth )
+    extrudeCut = extrudes.createInput( face, adsk.fusion.FeatureOperations.CutFeatureOperation)
     distance = adsk.fusion.DistanceExtentDefinition.create( cutDistance )
     extrudeCut.setOneSideExtent( distance, adsk.fusion.ExtentDirections.NegativeExtentDirection )
     extrudeCut.participantBodies = [ solid ]
@@ -598,6 +628,17 @@ def SketchCurveToCurve3D( coll: adsk.core.ObjectCollection ) -> list[adsk.core.C
 
     return curves
 
+def PlanarFacesToSketch( sketch: adsk.fusion.Sketch, profile: LightenProfile ) :
+
+    # baseFeature = sketch.parentComponent.features.baseFeatures.add()
+    # baseFeature.startEdit()
+    # offsetBody = sketch.parentComponent.bRepBodies.add( profile.offsetFace, baseFeature )
+    # sketch.project2( [offsetBody], False )
+    # baseFeature.finishEdit()
+
+    for edge in profile.offsetFace.faces.item(0).edges:
+        Curve3DToSketch( sketch, edge.geometry )
+
 def Curves3DToSketch( sketch: adsk.fusion.Sketch, curves: list[adsk.core.Curve3D] ) :
 
     for curve in curves:
@@ -623,6 +664,6 @@ def Curve3DToSketch( sketch: adsk.fusion.Sketch, curve: adsk.core.Curve3D ) -> a
 
     if sketchCurve:
         sketchCurve.isFixed = True
-        sketchCurve.isConstruction = True
+        # sketchCurve.isConstruction = True
 
     return sketchCurve
