@@ -254,6 +254,7 @@ def command_input_changed(args: adsk.core.InputChangedEventArgs):
         else:
             # We are not using a pinion 
             cog1Teeth.isVisible = True
+            cog1Teeth.value = 20
 
     if changed_input.id == 'pinion_cog1':
         cog1Teeth.value = pinionCenters[ cog1Pinion.selectedItem.index ]
@@ -267,9 +268,24 @@ def command_input_changed(args: adsk.core.InputChangedEventArgs):
         else:
             # We are not using a pinion 
             cog2Teeth.isVisible = True
+            cog2Teeth.value = 20
 
     if changed_input.id == 'pinion_cog2':
         cog2Teeth.value = pinionCenters[ cog2Pinion.selectedItem.index ]
+
+    if changed_input.id == 'cog1_teeth':
+        # If cog teeth are set below 17 teeth then force usage of pinions
+        if cog1Teeth.value < 17 and not cog1Group.isEnabledCheckBoxChecked:
+            cog1Group.isEnabledCheckBoxChecked = True
+            cog1Teeth.isVisible = False
+            futil.popup_error( 'Use pinions for cogs smaller than 17 teeth!')
+
+    if changed_input.id == 'cog2_teeth':
+        # If cog teeth are set below 17 teeth then force usage of pinions
+        if cog2Teeth.value < 17 and not cog2Group.isEnabledCheckBoxChecked:
+            cog2Group.isEnabledCheckBoxChecked = True
+            cog2Teeth.isVisible = False
+            futil.popup_error( 'Use pinions for cogs smaller than 17 teeth!')
 
 
 # This event handler is called when the user interacts with any of the inputs in the dialog

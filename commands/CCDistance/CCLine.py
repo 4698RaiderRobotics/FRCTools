@@ -83,31 +83,50 @@ def setCCLineAttributes( ccLine: CCLine ) :
     line = ccLine.line
     ld = ccLine.data
 
-    # Set the data attributes
-    setAttribute( line, CC_LINE_N1, str(ld.N1) )
-    setAttribute( line, CC_LINE_N2, str(ld.N2) )
-    setAttribute( line, CC_LINE_PIN1, str(ld.PIN1) )
-    setAttribute( line, CC_LINE_PIN2, str(ld.PIN2) )
+    # Set the data attributes make the smaller cog always first
+    if ld.N1 < ld.N2 :
+        setAttribute( line, CC_LINE_N1, str(ld.N1) )
+        setAttribute( line, CC_LINE_N2, str(ld.N2) )
+        setAttribute( line, CC_LINE_PIN1, str(ld.PIN1) )
+        setAttribute( line, CC_LINE_PIN2, str(ld.PIN2) )
+    else :
+        setAttribute( line, CC_LINE_N1, str(ld.N2) )
+        setAttribute( line, CC_LINE_N2, str(ld.N1) )
+        setAttribute( line, CC_LINE_PIN1, str(ld.PIN2) )
+        setAttribute( line, CC_LINE_PIN2, str(ld.PIN1) )
+
     setAttribute( line, CC_LINE_TEETH, str(ld.Teeth) )
     setAttribute( line, CC_LINE_EC, str(ld.ExtraCenterIN) )
     setAttribute( line, CC_LINE_MOTION_TYPE, str(ld.motion) )
 
     # Set the end circle tokens
-    setAttribute( line, CC_LINE_PITCH_CIRCLE1, ccLine.pitchCircle1.entityToken )
-    setAttribute( line, CC_LINE_PITCH_CIRCLE2, ccLine.pitchCircle2.entityToken )
-    setAttribute( line, CC_LINE_OD_CIRCLE1, ccLine.ODCircle1.entityToken )
-    setAttribute( line, CC_LINE_OD_CIRCLE2, ccLine.ODCircle2.entityToken )
+    if ld.N1 < ld.N2 :
+        setAttribute( line, CC_LINE_PITCH_CIRCLE1, ccLine.pitchCircle1.entityToken )
+        setAttribute( line, CC_LINE_PITCH_CIRCLE2, ccLine.pitchCircle2.entityToken )
+        setAttribute( line, CC_LINE_OD_CIRCLE1, ccLine.ODCircle1.entityToken )
+        setAttribute( line, CC_LINE_OD_CIRCLE2, ccLine.ODCircle2.entityToken )
+    else :
+        setAttribute( line, CC_LINE_PITCH_CIRCLE1, ccLine.pitchCircle2.entityToken )
+        setAttribute( line, CC_LINE_PITCH_CIRCLE2, ccLine.pitchCircle1.entityToken )
+        setAttribute( line, CC_LINE_OD_CIRCLE1, ccLine.ODCircle2.entityToken )
+        setAttribute( line, CC_LINE_OD_CIRCLE2, ccLine.ODCircle1.entityToken )
 
     # Set the TextBox token
     setAttribute( line, CC_LINE_TEXT, ccLine.textBox.entityToken )
 
     # Set the dimension tokens
     setAttribute( line, CC_LINE_LENGTH_DIM, ccLine.lengthDim.entityToken )
-    setAttribute( line, CC_LINE_PITCH_CIRCLE1_DIM, ccLine.PD1Dim.entityToken )
-    setAttribute( line, CC_LINE_PITCH_CIRCLE2_DIM, ccLine.PD2Dim.entityToken )
-    setAttribute( line, CC_LINE_OD_CIRCLE1_DIM, ccLine.OD1Dim.entityToken )
-    setAttribute( line, CC_LINE_OD_CIRCLE2_DIM, ccLine.OD2Dim.entityToken )
     setAttribute( line, CC_LINE_TEXT_HEIGHT_DIM, ccLine.textHeight.entityToken )
+    if ld.N1 < ld.N2 :
+        setAttribute( line, CC_LINE_PITCH_CIRCLE1_DIM, ccLine.PD1Dim.entityToken )
+        setAttribute( line, CC_LINE_PITCH_CIRCLE2_DIM, ccLine.PD2Dim.entityToken )
+        setAttribute( line, CC_LINE_OD_CIRCLE1_DIM, ccLine.OD1Dim.entityToken )
+        setAttribute( line, CC_LINE_OD_CIRCLE2_DIM, ccLine.OD2Dim.entityToken )
+    else:
+        setAttribute( line, CC_LINE_PITCH_CIRCLE1_DIM, ccLine.PD2Dim.entityToken )
+        setAttribute( line, CC_LINE_PITCH_CIRCLE2_DIM, ccLine.PD1Dim.entityToken )
+        setAttribute( line, CC_LINE_OD_CIRCLE1_DIM, ccLine.OD2Dim.entityToken )
+        setAttribute( line, CC_LINE_OD_CIRCLE2_DIM, ccLine.OD1Dim.entityToken )
 
     # futil.print_Attributes( line )
 
