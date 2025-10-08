@@ -147,6 +147,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
     # Connect to the events that are needed by this command.
     futil.add_handler(args.command.execute, command_execute, local_handlers=local_handlers)
+    futil.add_handler(args.command.preSelect, command_preselect, local_handlers=local_handlers)
     futil.add_handler(args.command.inputChanged, command_input_changed, local_handlers=local_handlers)
     futil.add_handler(args.command.executePreview, command_preview, local_handlers=local_handlers)
     futil.add_handler(args.command.validateInputs, command_validate_input, local_handlers=local_handlers)
@@ -245,6 +246,21 @@ def command_preview(args: adsk.core.CommandEventArgs):
         # This was needed once debugging output was turned off....
         app.activeViewport.refresh()
 
+# This event is fired when the user is hovering over an entity
+# but has not yet clicked on it.
+def command_preselect(args: adsk.core.SelectionEventArgs):
+    global lightenProfileList
+
+    if len(lightenProfileList) > 0:
+        existingPlane = lightenProfileList[0].profile.plane
+        existingPlane.transformBy( lightenProfileList[0].profile.parentSketch.transform )
+        newPlane = args.selection.entity.plane
+        newPlane.transformBy( args.selection.entity.parentSketch.transform )
+        if not existingPlane.isCoPlanarTo( newPlane ) :
+            # Do not allow selection of non-coplanar faces
+            args.isSelectable = False
+
+
 # This event handler is called when the user changes anything in the command dialog
 # allowing you to modify values of other inputs based on that change.
 def command_input_changed(args: adsk.core.InputChangedEventArgs):
@@ -265,6 +281,8 @@ def command_input_changed(args: adsk.core.InputChangedEventArgs):
     if changed_input.id == 'solid_selection' :
         profileSelection.clearSelection()
         lightenProfileList = []
+        if solidSelection.selectionCount > 0 :
+            profileSelection.hasFocus = True
 
 
     if changed_input.id == 'profile_selection' :
@@ -284,22 +302,24 @@ def command_input_changed(args: adsk.core.InputChangedEventArgs):
                         break
                 if not existingSelection:
                     futil.log(f'Attempting to add new profile to global list .. .. .')
-                    if len(lightenProfileList) > 0 :
-                        existingPlane = lightenProfileList[0].profile.plane
-                        existingPlane.transformBy( lightenProfileList[0].profile.parentSketch.transform )
-                        newPlane = profile.plane
-                        newPlane.transformBy( profile.parentSketch.transform )
-                        if existingPlane.isCoPlanarTo( newPlane ) :
-                            futil.log(f'Adding new profile to global list .. .. .')
-                            lightenProfileList.append( LightenProfile( profile, offsetDist.value, cornerRadius.value ))
-                        else:
-                            futil.popup_error( f'Selected profile is not coplanar with other selected profiles.')
-                            profileSelection.clearSelection()
-                            for liteProf in lightenProfileList:
-                                profileSelection.addSelection( liteProf.profile )
-                    else:
-                        futil.log(f'Adding new profile to empty global list .. .. .')
-                        lightenProfileList.append( LightenProfile( profile, offsetDist.value, cornerRadius.value ))
+                    # if len(lightenProfileList) > 0 :
+                        # existingPlane = lightenProfileList[0].profile.plane
+                        # existingPlane.transformBy( lightenProfileList[0].profile.parentSketch.transform )
+                        # newPlane = profile.plane
+                        # newPlane.transformBy( profile.parentSketch.transform )
+                        # if existingPlane.isCoPlanarTo( newPlane ) :
+                        #     futil.log(f'Adding new profile to global list .. .. .')
+
+                    lightenProfileList.append( LightenProfile( profile, offsetDist.value, cornerRadius.value ))
+
+                        # else:
+                            # futil.popup_error( f'Selected profile is not coplanar with other selected profiles.')
+                            # profileSelection.clearSelection()
+                            # for liteProf in lightenProfileList:
+                            #     profileSelection.addSelection( liteProf.profile )
+                    # else:
+                    #     futil.log(f'Adding new profile to empty global list .. .. .')
+                    #     lightenProfileList.append( LightenProfile( profile, offsetDist.value, cornerRadius.value ))
                 i += 1
         elif profileSelection.selectionCount < len(lightenProfileList) :
             # We removed a profile selection
