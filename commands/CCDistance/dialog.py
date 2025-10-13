@@ -84,6 +84,24 @@ class Dialog :
 
         self.ignorePinions = False
 
+    def load_inputs( self, inputs: adsk.core.CommandInputs ):
+
+        self.motionType: adsk.core.DropDownCommandInput = inputs.itemById('motion_type')
+        self.curveSelection: adsk.core.SelectionCommandInput = inputs.itemById('curve_selection')
+        self.requireSelection: adsk.core.BoolValueCommandInput = inputs.itemById( "require_selection" )
+        self.selectSep: adsk.core.SeparatorCommandInput = inputs.itemById( "selection_cog1_sep")
+        self.cog1Teeth: adsk.core.IntegerSpinnerCommandInput = inputs.itemById('cog1_teeth')
+        self.cog1Group: adsk.core.GroupCommandInput = inputs.itemById('use_pinion_cog1')
+        self.cog1Pinion: adsk.core.DropDownCommandInput = inputs.itemById('pinion_cog1')
+        self.cog2Teeth: adsk.core.IntegerSpinnerCommandInput = inputs.itemById('cog2_teeth')
+        self.cog2Group: adsk.core.GroupCommandInput = inputs.itemById('use_pinion_cog2')
+        self.cog2Pinion: adsk.core.DropDownCommandInput = inputs.itemById('pinion_cog2')
+        self.beltTeeth: adsk.core.IntegerSpinnerCommandInput = inputs.itemById( "belt_teeth" )
+        self.chainLinks: adsk.core.IntegerSpinnerCommandInput = inputs.itemById( "chain_links" )
+        self.extraCenter: adsk.core.ValueInput = inputs.itemById('extra_center')
+        self.swapCogs: adsk.core.BoolValueCommandInput = inputs.itemById( "swap_cogs" )
+        self.status: adsk.core.TextBoxCommandInput = inputs.itemById('status_msg')
+
     # This event handler is called when the user changes anything in the command dialog
     # allowing you to modify values of other inputs based on that change.
     def input_changed( self, args: adsk.core.InputChangedEventArgs ):
@@ -91,6 +109,8 @@ class Dialog :
 
         # # General logging for debug.
         futil.log(f'{args.firingEvent.name} input_changed() from a change to {changed_input.id}')
+
+        self.load_inputs( args.input.parentCommand.commandInputs )
 
         if changed_input.id == 'curve_selection' and not self.isCreateDialog:
             # Check if there is no selection and disable the dialog 
@@ -191,6 +211,8 @@ class Dialog :
         logstr = f'{args.firingEvent.name} validate_input: Motion={self.motionType.selectedItem.index}, '
         logstr += f'N1={self.cog1Teeth.value}, N2={self.cog2Teeth.value}, T={self.beltTeeth.value}'
         futil.log( logstr )
+
+        self.load_inputs( args.inputs )
 
         args.areInputsValid = True        
 

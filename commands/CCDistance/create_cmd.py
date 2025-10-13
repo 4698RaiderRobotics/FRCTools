@@ -59,11 +59,6 @@ def command_execute(args: adsk.core.CommandEventArgs):
         selEntity = CCDialog.curveSelection.selection(0).entity
         if selEntity.objectType == adsk.fusion.SketchCircle.classType() :
             startSketchPt = selEntity.centerSketchPoint
-        # elif selEntity.objectType == adsk.fusion.SketchLine.classType() :
-        #     if CCLine.isCCLine( selEntity ) :
-        #         ccLine.line = selEntity
-        #     else :
-        #         startSketchPt = selEntity.startSketchPoint
         else :
             startSketchPt = selEntity
 
@@ -75,14 +70,9 @@ def command_execute(args: adsk.core.CommandEventArgs):
     if ccLine.data.ccDistIN < 0.001:
         return
 
-    # if not ccutil.isCCLine( ccLine.line ):
     ccutil.dimAndLabelCCLine( ccLine )
     ccutil.createEndCircles( ccLine )
-    # else:
-    #     ccutil.modifyCCLine( ccLine )
 
-    # msg = f'<div align="center">{ccutil.createLabelString( ccLine.data )}</div>'
-    # CCDialog.status.formattedText = msg
     if args.firingEvent.name == "OnExecute" :
         CCLine.setCCLineAttributes( ccLine )
 
