@@ -47,6 +47,9 @@ motionTypes = (
     'Gears 20DP',
     'HTD 5mm Belt',
     'GT2 3mm Belt',
+    'RT25 Belt',
+    '#25 Chain',
+    '#35 Chain',
 )
 motionTypesDefault = motionTypes.index( 'Gears 20DP' )
 

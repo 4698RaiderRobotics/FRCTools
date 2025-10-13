@@ -68,6 +68,18 @@ def popup_error( message: str ):
     log(message)
     ui.messageBox( message )
 
+def ok_cancel_message( message: str, title: str ='' ):
+    result = ui.messageBox( message, title, adsk.core.MessageBoxButtonTypes.OKCancelButtonType  )
+    if result == adsk.core.DialogResults.DialogOK:
+        return True
+    return False
+
+def yes_no_message( message: str, title: str ='' ):
+    result = ui.messageBox( message, title, adsk.core.MessageBoxButtonTypes.YesNoButtonType  )
+    if result == adsk.core.DialogResults.DialogYes:
+        return True
+    return False
+
 def print_SketchObjectCollection( col: adsk.core.ObjectCollection ) :
     log(f'print_SketchObjectCollection() -- Collection has {col.count} items...')
     for item in col.asArray():

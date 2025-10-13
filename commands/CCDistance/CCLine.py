@@ -7,6 +7,7 @@ from ...lib import fusionAddInUtils as futil
 # Attribute constants
 CC_ATTRIBUTE_GROUP = "CCDistance_Group"
 CC_LINE_TEETH = "Teeth"
+CC_LINE_LINKS = "Links"
 CC_LINE_N1 = "N1"
 CC_LINE_N2 = "N2"
 CC_LINE_PIN1 = "PIN1"
@@ -34,6 +35,7 @@ class CCLineData :
     PIN1 = 0    # For addendum gears (pinions) this is the number of teeth and N1 will be the CD
     PIN2 = 0    # For addendum gears (pinions) this is the number of teeth and N2 will be the CD
     Teeth = 0
+    Links = 0
     ExtraCenterIN = 0.00
     motion = 0
     ccDistIN = 0.0    # Calculated before EC is added
@@ -96,6 +98,7 @@ def setCCLineAttributes( ccLine: CCLine ) :
         setAttribute( line, CC_LINE_PIN2, str(ld.PIN1) )
 
     setAttribute( line, CC_LINE_TEETH, str(ld.Teeth) )
+    setAttribute( line, CC_LINE_LINKS, str(ld.Links) )
     setAttribute( line, CC_LINE_EC, str(ld.ExtraCenterIN) )
     setAttribute( line, CC_LINE_MOTION_TYPE, str(ld.motion) )
 
@@ -159,6 +162,12 @@ def getLineData( line: adsk.fusion.SketchLine ) -> CCLineData :
     cclineData.motion = int(attr.value)
 
     # CCLines before 1.1.0 don't have these attributes...
+    try:
+        attr = line.attributes.itemByName( CC_ATTRIBUTE_GROUP, CC_LINE_LINKS )
+        cclineData.Links = int(attr.value)
+    except:
+        cclineData.Links = 0
+
     try:
         attr = line.attributes.itemByName( CC_ATTRIBUTE_GROUP, CC_LINE_PIN1 )
         cclineData.PIN1 = int(attr.value)

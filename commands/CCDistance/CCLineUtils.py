@@ -13,24 +13,43 @@ def calcCCLineData( ld: CCLineData ):
     if ld.motion == 0:
         # 20DP Gears
         ld.Teeth = 0
+        ld.Links = 0
         ld.ccDistIN = GearsCCDistanceIN( ld.N1, ld.N2, 20 )
         ld.PD1 = GearsPitchDiameterIN( ld.N1, 20 )
         ld.PD2 = GearsPitchDiameterIN( ld.N2, 20 )
         ld.OD1 = GearsOuterDiameterIN( ld.N1, 20 )
         ld.OD2 = GearsOuterDiameterIN( ld.N2, 20 )
-    else :
+    elif ld.motion < 4 :
+        # This is a belt
         if ld.motion == 1:
             # HTD 5mm Belt
             beltPitchMM = 5
-        else :
+        elif ld.motion == 2:
             # HTD 3mm Belt
             beltPitchMM = 3
+        else :
+            # RT25 Belt
+            beltPitchMM = 0.25 * 25.4
+
         ld.ccDistIN = BeltCCDistanceIN( ld.N1, ld.N2, ld.Teeth, beltPitchMM )
         ld.PD1 = BeltPitchDiameterIN( ld.N1, beltPitchMM )
         ld.PD2 = BeltPitchDiameterIN( ld.N2, beltPitchMM )
         ld.OD1 = BeltOuterDiameterIN( ld.N1, beltPitchMM )
         ld.OD2 = BeltOuterDiameterIN( ld.N2, beltPitchMM )
+    else :
+        # This is a chain
+        if ld.motion == 4:
+            # #25 Chain
+            chainPitchMM = 0.25 * 25.4
+        else:
+            # #35 Chain
+            chainPitchMM = 0.375 * 25.4
 
+        ld.ccDistIN = BeltCCDistanceIN( ld.N1, ld.N2, ld.Links, chainPitchMM )
+        ld.PD1 = BeltPitchDiameterIN( ld.N1, chainPitchMM )
+        ld.PD2 = BeltPitchDiameterIN( ld.N2, chainPitchMM )
+        ld.OD1 = BeltOuterDiameterIN( ld.N1, chainPitchMM )
+        ld.OD2 = BeltOuterDiameterIN( ld.N2, chainPitchMM )
 
 def GearsCCDistanceIN( N1: int, N2: int, dp: int ) -> float:
     pitch_diameter1 = N1 / (1.0 * dp)
@@ -171,14 +190,27 @@ def createLabelString( ld: CCLineData ) -> str:
                 lineLabel = f'Gear 20DP {p1}T({n1}T-CD)+{n2}T'
         else:
             lineLabel = f'Gear 20DP {n1}T+{n2}T'
-    else :
+    elif ld.motion > 0 and ld.motion < 4 :
+        # Belt
         if ld.motion == 1:
     #         # HTD 5mm Belt
             lineLabel = f'{ld.Teeth}T HTD 5mm ({n1}Tx{n2}T)'
-        else :
+        elif ld.motion == 2:
     #         # HTD 3mm Belt
             lineLabel = f'{ld.Teeth}T GT2 3mm ({n1}Tx{n2}T)'
-    
+        else :
+    #         # RT25 Belt
+            lineLabel = f'{ld.Teeth}T RT25 ({n1}Tx{n2}T)'
+
+    else :
+        # Chain
+        if ld.motion == 4:
+    #         # #25 Chain
+            lineLabel = f'{ld.Links}Lk #25 ({n1}Tx{n2}T)'
+        elif ld.motion == 5:
+    #         # #35 Chain
+            lineLabel = f'{ld.Links}Lk #35 ({n1}Tx{n2}T)'
+
     if abs(ld.ExtraCenterIN) > 0.0005 :
         lineLabel += f' EC({ld.ExtraCenterIN:.3})'
 
@@ -248,13 +280,16 @@ def modifyCCLine( ccLine: CCLine ):
         futil.popup_error( f'Failed to resize centerline to length={(ld.ccDistIN + ld.ExtraCenterIN)}in!  Are both ends of C-C Distance constrained?' )
         return
 
-    label = createLabelString( ld )
-    ccLine.textBox.text = label
-    ccLine.textBox.height = computeTextSizeIN( ld ) * 2.54
-    ccLine.textHeight.value = ccLine.textBox.height * 2.0
+    try:
+        label = createLabelString( ld )
+        ccLine.textBox.text = label
+        ccLine.textBox.height = computeTextSizeIN( ld ) * 2.54
+        ccLine.textHeight.value = ccLine.textBox.height * 2.0
 
-    ccLine.PD1Dim.value = ld.PD1 * 2.54
-    ccLine.PD2Dim.value = ld.PD2 * 2.54
-    ccLine.OD1Dim.value = ld.OD1 * 2.54
-    ccLine.OD2Dim.value = ld.OD2 * 2.54
+        ccLine.PD1Dim.value = ld.PD1 * 2.54
+        ccLine.PD2Dim.value = ld.PD2 * 2.54
+        ccLine.OD1Dim.value = ld.OD1 * 2.54
+        ccLine.OD2Dim.value = ld.OD2 * 2.54
+    except:
+        futil.popup_error( f'Failed to modify CCLine geometry!' )
 
