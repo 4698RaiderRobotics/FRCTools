@@ -84,7 +84,11 @@ class Dialog :
 
         self.ignorePinions = False
 
+        self.null_inputs()
+
     def load_inputs( self, inputs: adsk.core.CommandInputs ):
+
+        futil.log(f'CCDialog -- load_inputs().')
 
         self.motionType: adsk.core.DropDownCommandInput = inputs.itemById('motion_type')
         self.curveSelection: adsk.core.SelectionCommandInput = inputs.itemById('curve_selection')
@@ -101,6 +105,24 @@ class Dialog :
         self.extraCenter: adsk.core.ValueInput = inputs.itemById('extra_center')
         self.swapCogs: adsk.core.BoolValueCommandInput = inputs.itemById( "swap_cogs" )
         self.status: adsk.core.TextBoxCommandInput = inputs.itemById('status_msg')
+
+    def null_inputs( self ):
+
+        self.motionType = None
+        self.curveSelection = None
+        self.requireSelection = None
+        self.selectSep = None
+        self.cog1Teeth = None
+        self.cog1Group = None
+        self.cog1Pinion = None
+        self.cog2Teeth = None
+        self.cog2Group = None
+        self.cog2Pinion = None
+        self.beltTeeth = None
+        self.chainLinks = None
+        self.extraCenter = None
+        self.swapCogs = None
+        self.status = None
 
     # This event handler is called when the user changes anything in the command dialog
     # allowing you to modify values of other inputs based on that change.
@@ -203,22 +225,25 @@ class Dialog :
                     self.cog2Group.isEnabledCheckBoxChecked = True
                     self.cog2Teeth.isVisible = False
 
+        self.null_inputs()
+
 
     # This event handler is called when the user interacts with any of the inputs in the dialog
     # which allows you to verify that all of the inputs are valid and enables the OK button.
     def validate_input( self, args: adsk.core.ValidateInputsEventArgs ):
 
+        self.load_inputs( args.inputs )
+
         logstr = f'{args.firingEvent.name} validate_input: Motion={self.motionType.selectedItem.index}, '
         logstr += f'N1={self.cog1Teeth.value}, N2={self.cog2Teeth.value}, T={self.beltTeeth.value}'
         futil.log( logstr )
 
-        self.load_inputs( args.inputs )
-
         args.areInputsValid = True        
 
         if not (self.cog1Teeth.value >= 6 and self.cog1Teeth.value < 100 and self.cog2Teeth.value >= 6 and self.cog1Teeth.value < 100 ):
-            self.set_status( 'Invalid Number of cog teeth! [6-100]</font></div>', True )
+            self.set_status( args.inputs, 'Invalid Number of cog teeth! [6-100]</font></div>', True )
             args.areInputsValid = False
+            self.null_inputs()
             return
         
         if self.motionType.selectedItem.index != 0:
@@ -233,14 +258,18 @@ class Dialog :
             if ld.ccDistIN < (ld.OD1 + ld.OD2) / 2.0 :
                 # belt/chain is too short
                 if ld.motion < 4:
-                    self.set_status( 'Belt is too short! (cc-dist={:.3f})'.format(ld.ccDistIN), True )
+                    self.set_status( args.inputs, 'Belt is too short! (cc-dist={:.3f})'.format(ld.ccDistIN), True )
                 else:
-                    self.set_status( 'Chain is too short! (cc-dist={:.3f})'.format(ld.ccDistIN), True )
+                    self.set_status( args.inputs, 'Chain is too short! (cc-dist={:.3f})'.format(ld.ccDistIN), True )
                 args.areInputsValid = False
-                return
+
+        self.null_inputs()
 
 
-    def generate_ccline_data( self ) -> CCLine.CCLineData :
+    def generate_ccline_data( self, inputs: adsk.core.CommandInputs ) -> CCLine.CCLineData :
+
+        self.load_inputs( inputs )
+
         ld = CCLine.CCLineData()
 
         ld.motion = self.motionType.selectedItem.index
@@ -266,12 +295,14 @@ class Dialog :
             ld.PIN1 = ld.PIN2
             ld.PIN2 = tempN
 
-        self.set_status( ccutil.createLabelString( ld ), False )
+        self.set_status( inputs, ccutil.createLabelString( ld ), False )
 
         return ld
 
 
-    def disable_dialog( self ):
+    def disable_dialog( self, inputs: adsk.core.CommandInputs ):
+
+        self.load_inputs( inputs )
 
         self.motionType.isEnabled = False
         self.selectSep.isEnabled = False
@@ -284,9 +315,11 @@ class Dialog :
         self.beltTeeth.isEnabled = False
         self.extraCenter.isEnabled = False
         self.swapCogs.isEnabled = False
-        self.set_status( 'Select a C-C Distance object.', False )
+        self.set_status( inputs, 'Select a C-C Distance object.', False )
 
-    def initialize_dialog( self, lineData: CCLine.CCLineData ):
+    def initialize_dialog( self, inputs: adsk.core.CommandInputs, lineData: CCLine.CCLineData ):
+
+        self.load_inputs( inputs )
 
         self.motionType.isEnabled = True
         self.selectSep.isEnabled = True
@@ -345,9 +378,11 @@ class Dialog :
         self.extraCenter.value = lineData.ExtraCenterIN * 2.54
         self.motionType.listItems.item( lineData.motion ).isSelected = True
 
-        self.set_status( ccutil.createLabelString( lineData ), False )
+        self.set_status( inputs, ccutil.createLabelString( lineData ), False )
 
-    def set_status( self, str, isError: bool ) :
+    def set_status( self, inputs: adsk.core.CommandInputs, str, isError: bool = False ) :
+        self.status: adsk.core.TextBoxCommandInput = inputs.itemById('status_msg')
+
         if isError:
             msg = f'<div align="center"><font color="red">{str}</font></div>'
         else:

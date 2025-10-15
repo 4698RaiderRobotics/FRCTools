@@ -76,7 +76,7 @@ pinionTeeth   = [  8,  9, 10, 11, 12, 12, 13, 14, 14, 15, 16 ]
 #           idx = pinionTeeth - 7
 #        else:
 #           idx = pinionTeeth - 6
-# used in edit_command_created()
+# used in Dialog.initialize_dialog()
 
 
 
@@ -117,7 +117,9 @@ def start():
     # Listen for commandStarting, activeSelectionChanged, and markingMenuDisplaying events
     futil.add_handler( ui.commandStarting, ui_command_starting, local_handlers=ui_handlers )
     futil.add_handler( ui.activeSelectionChanged, ui_selection_changed, local_handlers=ui_handlers )
-    futil.add_handler( ui.markingMenuDisplaying, ui_marking_menu, local_handlers=ui_handlers )
+
+    # This was moved to command/__init__.py as it is used for CCDistance and TimingBelt
+    # futil.add_handler( ui.markingMenuDisplaying, ui_marking_menu, local_handlers=ui_handlers )
 
 # Executed when add-in is stopped.
 def stop():
@@ -214,61 +216,6 @@ def ui_selection_changed(args: adsk.core.ActiveSelectionEventArgs):
             selected_CCLine.append( CCLine.getCCLineFromEntity( cline) )
     
     # futil.log(f'                    at end ccLine len={len(selected_CCLine)}')
-
-# Function that is called when the marking menu is going to be displayed.
-def ui_marking_menu(args: adsk.core.MarkingMenuEventArgs):
-
-    controls = args.linearMarkingMenu.controls
-
-    # futil.log(f' Active Workspace = {app.activeProduct}')
-    if app.activeProduct.objectType != adsk.fusion.Design.classType() :
-        return
-
-    # Gather the Mtext command
-    editMTextCmd = controls.itemById( 'EditMTextCmd' )
-
-    # Make a list of the controls to turn off
-    hideCtrls = [editMTextCmd]
-    hideCtrls.append( controls.itemById( 'ExplodeTextCmd' ) )
-    hideCtrls.append( controls.itemById( 'ToggleDrivenDimCmd' ) )
-    hideCtrls.append( controls.itemById( 'ToggleRadialDimCmd' ) )
-
-    editCCLineMenuItem = controls.itemById( EDIT_CMD_ID )
-    if not editCCLineMenuItem:
-        edit_cmd_def = ui.commandDefinitions.itemById(EDIT_CMD_ID)
-        # Find the separator before the "Edit Text" command and add our commands after it
-        i = editMTextCmd.index - 1
-        while i > 0:
-            control = controls.item( i )
-            if control.objectType == adsk.core.SeparatorControl.classType():
-                control = controls.item( i + 1 )
-                break
-            i -= 1
-        editCCLineMenuItem = controls.addCommand( edit_cmd_def, control.id, True )
-        editCCLineSep = controls.addSeparator( "EditCCLineSeparator", editCCLineMenuItem.id, False )
-
-    editCCLineSep = controls.itemById( "EditCCLineSeparator" )
-
-    if len(args.selectedEntities) == 1:
-        ccLine = CCLine.getCCLineFromEntity( args.selectedEntities[0] )
-        # for control in controls:
-        #     if control.objectType == adsk.core.SeparatorControl.classType():
-        #         sep: adsk.core.SeparatorControl = control
-        #         # futil.log(f'Separator = {sep.id} at index {sep.index}')
-        #     elif control.isVisible :
-        #         futil.log(f'marking menu = {control.id} ,{control.isVisible}')
-        if ccLine:
-            editCCLineMenuItem.isVisible = True
-            editCCLineSep.isVisible = True
-            for ctrl in hideCtrls:
-                try:
-                    ctrl.isVisible = False
-                except:
-                    None
-            return
-        
-    editCCLineMenuItem.isVisible = False
-    editCCLineSep.isVisible = False
 
 
 # ===========

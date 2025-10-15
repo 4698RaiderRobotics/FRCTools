@@ -44,7 +44,7 @@ def edit_command_created(args: adsk.core.CommandCreatedEventArgs):
     CCDialog = dialog.Dialog( inputs, False )
 
     SelectedLine = None
-    CCDialog.disable_dialog()
+    CCDialog.disable_dialog( inputs )
 
 
 # This event is fired when the user is hovering over an entity
@@ -81,7 +81,7 @@ def edit_command_select(args: adsk.core.SelectionEventArgs):
     for cc_obj in cc_objs:
         args.activeInput.addSelection( cc_obj )
 
-    CCDialog.initialize_dialog( SelectedLine.data )
+    CCDialog.initialize_dialog( args.activeInput.parentCommand.commandInputs, SelectedLine.data )
 
 
 # This event handler is called when the user changes anything in the command dialog
@@ -98,12 +98,12 @@ def edit_command_execute(args: adsk.core.CommandEventArgs):
     global CCDialog, SelectedLine
 
     # General logging for debug.
-    futil.log(f'{args.command.parentCommandDefinition.name} Edit Command Execute Event')
+    futil.log(f'{args.command.parentCommandDefinition.name} Edit Command Execute Event ---  Start...')
 
     if not SelectedLine:
         return
 
-    SelectedLine.data = CCDialog.generate_ccline_data()
+    SelectedLine.data = CCDialog.generate_ccline_data( args.command.commandInputs )
 
     ccutil.calcCCLineData( SelectedLine.data )
     if SelectedLine.data.ccDistIN < 0.001:

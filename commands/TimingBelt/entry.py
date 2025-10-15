@@ -4,7 +4,10 @@ import os
 import math
 from ...lib import fusionAddInUtils as futil
 from ... import config
-from ..CCDistance.CCLine import *
+from ..CCDistance import CCLine
+from ..CCDistance.entry import motionTypes
+from .geometry import *
+
 
 app = adsk.core.Application.get()
 ui = app.userInterface
@@ -12,8 +15,8 @@ ui = app.userInterface
 
 # TODO *** Specify the command identity information. ***
 CMD_ID = f'{config.COMPANY_NAME}_{config.ADDIN_NAME}_TimingBeltDialog'
-CMD_NAME = 'Extrude Timing Belt'
-CMD_Description = 'Extrude a Timing Belt from a C-C Line or pitch circles'
+CMD_NAME = 'Extrude Belt/Chain'
+CMD_Description = 'Extrude a Timing Belt or Chain from a C-C Line'
 
 # Specify that the command will be promoted to the panel.
 IS_PROMOTED = False
@@ -25,6 +28,7 @@ ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resource
 # they are not released and garbage collected.
 local_handlers = []
 
+SelectedLine: CCLine.CCLine = None
 
 # Executed when add-in is run.
 def start():
@@ -71,52 +75,85 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     inputs = args.command.commandInputs
 
     # Create a Sketch Curve selection input.
-    pitchLineSelection = inputs.addSelectionInput('belt_pitch_circles', 'End Circles', 'Select a C-C Line or end circles')
-    pitchLineSelection.addSelectionFilter( "SketchCurves" )
-    pitchLineSelection.setSelectionLimits( 1, 2 )
+    pitchLineSelection = inputs.addSelectionInput('belt_pitch_circles', 'C-C Line', 'Select a C-C Line')
+    # pitchLineSelection.addSelectionFilter( "SketchCurves" )
+    pitchLineSelection.setSelectionLimits( 3, 3 )
 
     # Create a simple text box input.
-    belt_type = inputs.addDropDownCommandInput('belt_type', 'Timing Belt Type', adsk.core.DropDownStyles.TextListDropDownStyle)
-    belt_type.listItems.add('HTD 5mm Pitch', True, '')
-    belt_type.listItems.add('GT2 3mm Pitch', False, '')
-    belt_type.isEnabled = False
+    belt_type = inputs.addTextBoxCommandInput('belt_type', 'Extruding :', '', 1, True )
 
     # Create a value input field and set the default using 1 unit of the default length unit.
     defaultLengthUnits = "mm"
     default_value = adsk.core.ValueInput.createByString('9')
     inputs.addValueInput('belt_width', 'Belt Width', defaultLengthUnits, default_value)
 
-    inputs.addBoolValueInput('suppress_teeth', 'Toothless Belt', True)
+    inputs.addBoolValueInput( 'suppress_teeth', 'Toothless Belt', True, '', True )
 
-    # TODO Connect to the events that are needed by this command.
+    # Connect to the events that are needed by this command.
     futil.add_handler(args.command.execute, command_execute, local_handlers=local_handlers)
     futil.add_handler(args.command.inputChanged, command_input_changed, local_handlers=local_handlers)
+    futil.add_handler(args.command.preSelect, command_preselect, local_handlers=local_handlers)
+    futil.add_handler(args.command.select, command_select, local_handlers=local_handlers)
     futil.add_handler(args.command.executePreview, command_preview, local_handlers=local_handlers)
     futil.add_handler(args.command.validateInputs, command_validate_input, local_handlers=local_handlers)
     futil.add_handler(args.command.destroy, command_destroy, local_handlers=local_handlers)
+
+# This event is fired when the user is hovering over an entity
+# but has not yet clicked on it.
+def command_preselect(args: adsk.core.SelectionEventArgs):
+    global SelectedLine
+
+    SelectedLine = CCLine.getCCLineFromEntity(args.selection.entity)
+    # Allow selection if this is a ccline and not gears
+    if SelectedLine and SelectedLine.data.motion != 0:
+        obj = adsk.core.ObjectCollection.create()
+        cc_objs = [ SelectedLine.line, SelectedLine.ODCircle1, SelectedLine.ODCircle2 ]
+        for cc_obj in cc_objs:
+            if cc_obj != args.selection.entity:
+                obj.add( cc_obj )
+
+        args.additionalEntities = obj
+
+    else:
+        args.isSelectable = False
+
+
+# This event is fired when the user clicks on an entity
+# to select it.
+def command_select(args: adsk.core.SelectionEventArgs):
+    # global SelectedLine
+
+    futil.log( f'command_select - selected = {args.activeInput.selectionCount}' )
+    
+    # SelectedLine = CCLine.getCCLineFromEntity( args.selection.entity )
+    if not SelectedLine:
+        return
+ 
+    args.activeInput.clearSelection()
+    cc_objs = [ SelectedLine.line, SelectedLine.ODCircle1, SelectedLine.ODCircle2 ]
+    for cc_obj in cc_objs:
+        args.activeInput.addSelection( cc_obj )
 
 
 # This event handler is called when the user clicks the OK button in the command dialog or 
 # is immediately called after the created event not command inputs were created for the dialog.
 def command_execute(args: adsk.core.CommandEventArgs):
+    global SelectedLine
+
     # General logging for debug.
     # futil.log(f'{CMD_NAME} Command Execute Event')
 
-    # Get a reference to your command's inputs.
+    # Get a reference to the command's inputs.
     inputs = args.command.commandInputs
-    pitchLineSelection: adsk.core.SelectionCommandInput = inputs.itemById('belt_pitch_circles')
     belt_width: adsk.core.ValueCommandInput = inputs.itemById('belt_width')
-    belt_type: adsk.core.DropDownCommandInput = inputs.itemById('belt_type')
-    futil.log(f'Selection count is {pitchLineSelection.selectionCount}...')
+    belt_type: adsk.core.TextBoxCommandInput = inputs.itemById('belt_type')
+    suppressTeeth = inputs.itemById('suppress_teeth')
 
-    # Save user selections because they seem to be cleared when a new component is created.
-    userSelections = []
-    i = 0 
-    while i < pitchLineSelection.selectionCount:
-        userSelections.append( pitchLineSelection.selection(i).entity )
-        i += 1
-    
-    originalSketch: adsk.fusion.Sketch = pitchLineSelection.selection(0).entity.parentSketch
+
+    # originalSketch: adsk.fusion.Sketch = pitchLineSelection.selection(0).entity.parentSketch
+    originalSketch: adsk.fusion.Sketch = SelectedLine.line.parentSketch
+    timeline = originalSketch.parentComponent.parentDesign.timeline
+    start_timeline_pos = timeline.markerPosition
 
     # Create a new component to put the sketches and geometry into
     design = adsk.fusion.Design.cast(app.activeProduct)
@@ -128,65 +165,63 @@ def command_execute(args: adsk.core.CommandEventArgs):
     sketch = workingComp.sketches.add( originalSketch.referencePlane, workingOcc )
     sketch.name = 'TimingBelt'
 
-    if belt_type.selectedItem.index == 0:
-        beltPitchLength = 5
-        beltThickness = 0.174
-    else:
-        beltPitchLength = 3
-        beltThickness = 0.126
+    belt_type.formattedText = motionTypes[ SelectedLine.data.motion ]
+    belt_geom = get_belt_geometry( SelectedLine.data.motion )
 
 
-    # Determine if two circles are selected or a pitch loop is selected
+    PitchLoop = createPitchLoop( sketch, SelectedLine, suppressTeeth.value )
+    # PitchLoop = createPitchLoopFromCircles( sketch, SelectedLine.pitchCircle1.worldGeometry, SelectedLine.pitchCircle2.worldGeometry )
+
     pathCurves = adsk.core.ObjectCollection.create()
-    if userSelections[0].objectType == adsk.fusion.SketchCircle.classType():
-        c1 = userSelections[0].geometry
-        c2 = userSelections[1].geometry
-        PitchLoop = createPitchLoopFromCircles( sketch, c1, c2 )
-
-        futil.log(f'path curves len = {PitchLoop.count}')
-        for curve in PitchLoop:
-            pathCurves.add( curve.createForAssemblyContext(workingOcc))
-    else :
-        return
-        # PitchLoop = originalSketch.findConnectedCurves( userSelections[0] )
-        # for curve in PitchLoop:
-        #     newCurve = sketch.include( curve )
-        #     newCurve.item(0).isConstruction = True
-        #     pathCurves.add( curve )
-        #     curves.append( newCurve.item(0) )
-    
-    # futil.log( "Path Curves ::")
-    # futil.print_SketchObjectCollection( pathCurves )
+    for curve in PitchLoop:
+        pathCurves.add( curve.createForAssemblyContext(workingOcc))
 
     curveLength = 0.0
     for curve in pathCurves:
         curveLength += curve.length
 
-    toothCount = int( (curveLength * 10 / beltPitchLength) + 0.5 )
+    toothCount = int( (curveLength * 10 / belt_geom.pitchLength) + 0.5 )
     futil.log(f'Loop length is {curveLength} number of teeth is {toothCount}...')
 
-    if beltPitchLength == 5:
-        comp_name = f"Belt_HTD_5mm-{toothCount}Tx{int(belt_width.value*10)}mm"
-    else:
-        comp_name = f"Belt_GT2_3mm-{toothCount}Tx{int(belt_width.value*10)}mm"
-
+    comp_name = get_component_name( SelectedLine.data.motion, toothCount, belt_width.value * 10 )
     workingComp.name = comp_name
 
-
     # Create the Offsets for the belt thickness.
-    half_belt_thickness = adsk.core.ValueInput.createByReal( beltThickness / 2 ) # half of thickness
+    if args.firingEvent.name == "OnExecutePreview":
+        if belt_geom.toothHeight > 0:
+            inward_offset = adsk.core.ValueInput.createByReal( - (belt_geom.pitchLineDepth + belt_geom.toothHeight) / 10 )
+        else :
+            inward_offset = adsk.core.ValueInput.createByReal( -belt_geom.thickness / 20 )
+    else:
+        inward_offset = adsk.core.ValueInput.createByReal( -belt_geom.pitchLineDepth / 10 )
+
+    if belt_geom.toothHeight > 0:
+        outward_offset = adsk.core.ValueInput.createByReal( (belt_geom.thickness - belt_geom.pitchLineDepth) / 10 )
+    else:
+        outward_offset = adsk.core.ValueInput.createByReal( belt_geom.thickness / 20 )
 
     geoConstraints = sketch.geometricConstraints
     curves = []
     for curve in PitchLoop:
         curves.append( curve )
 
-    offsetInput = geoConstraints.createOffsetInput( curves, half_belt_thickness )
-    geoConstraints.addTwoSidesOffset( offsetInput, True )
+    offsetInput = geoConstraints.createOffsetInput( curves, inward_offset )
+    geoConstraints.addOffset2( offsetInput )
+    offsetInput = geoConstraints.createOffsetInput( curves, outward_offset )
+    geoConstraints.addOffset2( offsetInput )
 
     futil.log(f'Offsetting created {sketch.profiles.count} profiles..')
     if sketch.profiles.count < 2 :
         futil.popup_error(f'offset profiles not created correctly.')
+
+    if args.firingEvent.name == "OnExecutePreview" :
+        # Don't extrude and pattern on path if previewing just do the belt outline.
+        extrudeBeltPreview( sketch, pathCurves, belt_width.value )
+
+        end_timeline_pos = timeline.markerPosition - 1
+        grp = timeline.timelineGroups.add( start_timeline_pos, end_timeline_pos )
+        grp.name = "Extrude Belt"
+        return
 
     maxArea = 0
     insideLoop = None
@@ -202,11 +237,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
   
     (lineCurve, lineNormal, toothAnchorPoint) = findToothAnchor( insideLoop )
 
-    if beltPitchLength == 5:
-        baseLine = createHTD_5mmProfile( sketch )
-    else:
-        baseLine = createGT2_3mmProfile( sketch )
-
+    baseLine = createToothProfile( sketch, belt_geom )
 
     geoConstraints.addCoincident( baseLine.startSketchPoint, toothAnchorPoint )
     # Rotating the tooth profile did not work so a dimension is used instead.
@@ -216,20 +247,19 @@ def command_execute(args: adsk.core.CommandEventArgs):
     angleDim.value = 0.1 #radians
     angleDim.deleteMe()
     geoConstraints.addCollinear( baseLine, lineCurve )
-
-    if args.firingEvent.name == "OnExecutePreview" :
-        # Don't extrude and pattern on path if previewing just do the belt outline.
-        extrudeBeltPreview( sketch, pathCurves, belt_width.value )
-        return
     
-    extrudeBelt( sketch, pathCurves, belt_width.value, toothCount, beltPitchLength )
+    extrudeBelt( sketch, pathCurves, belt_width.value, toothCount, belt_geom.pitchLength )
+
+    end_timeline_pos = timeline.markerPosition - 1
+    grp = timeline.timelineGroups.add( start_timeline_pos, end_timeline_pos )
+    grp.name = "Extrude Belt"
 
 
 def extrudeBeltPreview( sketch: adsk.fusion.Sketch, path: adsk.core.ObjectCollection, beltWidth: float ) :
 
     workingComp = sketch.parentComponent
 
-    # Determine the profiles of the belt and tooth
+    # Determine the profile of the belt
     maxArea = 0
     minArea = 9999999
     i = 0
@@ -242,14 +272,11 @@ def extrudeBeltPreview( sketch: adsk.fusion.Sketch, path: adsk.core.ObjectCollec
         i += 1
 
     beltLoop = None
-    profileLoop = None
     i = 0
     while i < sketch.profiles.count:
         profile = sketch.profiles.item(i)
-        if profile.areaProperties().area > minArea and profile.areaProperties().area < maxArea:
+        if profile.areaProperties().area < maxArea:
             beltLoop = profile
-        elif profile.areaProperties().area < maxArea:
-            profileLoop = profile
         i += 1
 
     extrudes = workingComp.features.extrudeFeatures
@@ -297,7 +324,7 @@ def extrudeBelt( sketch: adsk.fusion.Sketch, path: adsk.core.ObjectCollection,
     patternCollection.add( extrudeTooth )
 
 #    pathCurves = sketch.findConnectedCurves( originalConnectedCurves.item(0) )
-    futil.print_SketchObjectCollection( path )
+    # futil.print_SketchObjectCollection( path )
     patternPath = adsk.fusion.Path.create( path, adsk.fusion.ChainedCurveOptions.noChainedCurves )
 #    patternPath = adsk.fusion.Path.create( originalConnectedCurves.item(0), adsk.fusion.ChainedCurveOptions.connectedChainedCurves )
     toothPatternInput = pathPatterns.createInput( 
@@ -321,45 +348,32 @@ def command_preview(args: adsk.core.CommandEventArgs):
 # This event handler is called when the user changes anything in the command dialog
 # allowing you to modify values of other inputs based on that change.
 def command_input_changed(args: adsk.core.InputChangedEventArgs):
+    global SelectedLine
+
     changed_input = args.input
     inputs = args.inputs
 
     # General logging for debug.
-    # futil.log(f'{CMD_NAME} Input Changed Event fired from a change to {changed_input.id}')
+    futil.log(f'{CMD_NAME} Input Changed Event fired from a change to {changed_input.id}')
 
     pitchLineSelection: adsk.core.SelectionCommandInput = inputs.itemById('belt_pitch_circles')
-    belt_type: adsk.core.DropDownCommandInput = inputs.itemById('belt_type')
+    belt_width: adsk.core.ValueCommandInput = inputs.itemById( 'belt_width' )
+    suppress_teeth: adsk.core.BoolValueCommandInput = inputs.itemById('suppress_teeth')
 
     if changed_input.id == 'belt_pitch_circles' :
-        if pitchLineSelection.selectionCount == 1:
-            ccLine = getCCLineFromEntity( pitchLineSelection.selection(0).entity )
-            if ccLine :
-                pitchLineSelection.clearSelection()
-                if ccLine.data.motion != 0 :
-                    belt_type.listItems.item( ccLine.data.motion - 1).isSelected = True
-                    belt_type.isEnabled = False
-                    pitchLineSelection.addSelection( ccLine.pitchCircle1 )
-                    pitchLineSelection.addSelection( ccLine.pitchCircle2 )
+        if pitchLineSelection.selectionCount > 0 :
+            geom = get_belt_geometry( SelectedLine.data.motion )
+            belt_width.value = geom.width / 10
+            if SelectedLine.data.motion > 3 :
+                belt_width.isEnabled = False
+                suppress_teeth.value = True
+                suppress_teeth.isEnabled = False
             else :
-                belt_type.isEnabled = True
-        if pitchLineSelection.selectionCount == 3 and belt_type.isEnabled == False :
-            # Another entity was selected when a ccLine is selected.
-            newEntity = pitchLineSelection.selection(2).entity
-            ccLine = getCCLineFromEntity( newEntity )
-
-            if ccLine :
-                # The new selection is another ccLine (or the same one)
-                pitchLineSelection.clearSelection()
-                if ccLine.data.motion != 0 :
-                    belt_type.listItems.item( ccLine.data.motion - 1).isSelected = True
-                    belt_type.isEnabled = False
-                    pitchLineSelection.addSelection( ccLine.pitchCircle1 )
-                    pitchLineSelection.addSelection( ccLine.pitchCircle2 )
-            else :
-                # The new selection is not a ccLine
-                pitchLineSelection.clearSelection()
-                pitchLineSelection.addSelection( newEntity )
-                belt_type.isEnabled = True
+                belt_width.isEnabled = True
+                suppress_teeth.isEnabled = True
+        else:
+            belt_width.isEnabled = True
+            suppress_teeth.isEnabled = True
 
 # This event handler is called when the user interacts with any of the inputs in the dialog
 # which allows you to verify that all of the inputs are valid and enables the OK button.
@@ -368,23 +382,13 @@ def command_validate_input(args: adsk.core.ValidateInputsEventArgs):
     inputs = args.inputs
 
     pitchLineSelection: adsk.core.SelectionCommandInput = inputs.itemById('belt_pitch_circles')
-    
-    parentSketch: adsk.fusion.Sketch = pitchLineSelection.selection(0).entity.parentSketch
-    connectedCurves = parentSketch.findConnectedCurves( pitchLineSelection.selection(0).entity )
-            
-    if connectedCurves.count > pitchLineSelection.selectionCount:
-        pitchLineSelection.clearSelection()
-        for curve in connectedCurves:
-            pitchLineSelection.addSelection( curve )
-
-    inputs = args.inputs
+    beltWidth = inputs.itemById('belt_width')
     
     # Verify the validity of the input values. This controls if the OK button is enabled or not.
-    beltWidth = inputs.itemById('belt_width')
 
     # futil.log(f'{CMD_NAME} Validate:: num selected = {pitchLineSelection.selectionCount}')
 
-    if abs(beltWidth.value) > 0.01 and pitchLineSelection.selectionCount == 2:
+    if beltWidth.value > 0.001 and pitchLineSelection.selectionCount > 0 :
         args.areInputsValid = True
     else:
         args.areInputsValid = False
@@ -399,39 +403,53 @@ def command_destroy(args: adsk.core.CommandEventArgs):
     local_handlers = []
 
 
-# Create the HTD 5mm tooth profile.
-def createHTD_5mmProfile( sketch: adsk.fusion.Sketch ):
+# Create a simplified HTD style profile.
+def createToothProfile( sketch: adsk.fusion.Sketch, belt_geom: TimingBeltGeom ):
     geoConstraints = sketch.geometricConstraints
     sketchCurves = sketch.sketchCurves
     sketchDims = sketch.sketchDimensions
 
-    baseLineLength = 0.385373
-    filletRadius = 0.043
-    toothBumpRadius = 0.15
-    toothBumpOffset = 0.054
-    filletSweepAngle = 1.6284  # 93.3 degrees
-    toothBumpSweepAngle = -3.25548  # 186.525 degrees
+    # Create the tooth profile at the origin then it get moved to the pitch line
 
-    # Create the tooth profile at the origin
+    # Create the base line for the profile
+    baseLineLength = (belt_geom.toothBumpRadius + belt_geom.filletRadius) * 2
     originPt = adsk.core.Point3D.create( 0, 0, 0)
     baseLine = sketchCurves.sketchLines.addByTwoPoints( 
-        originPt, adsk.core.Point3D.create( baseLineLength, 0, 0) )
-    arcEndLine = sketchCurves.sketchLines.addByTwoPoints( 
-        baseLine.startSketchPoint, adsk.core.Point3D.create( 0, filletRadius, 0) )
-    arcEndLine.isConstruction = True
-    geoConstraints.addPerpendicular( arcEndLine, baseLine )
+        originPt, adsk.core.Point3D.create( baseLineLength/10, 0, 0) )
+    
+    # Create the construction line for the center of the first root fillet
+    startpt = baseLine.startSketchPoint
+    endpt = adsk.core.Point3D.create( 0, belt_geom.filletRadius/10, 0)
+    firstFilletConst = sketchCurves.sketchLines.addByTwoPoints( startpt, endpt )
+    firstFilletConst.isConstruction = True
+    geoConstraints.addPerpendicular( firstFilletConst, baseLine )
     textPoint = adsk.core.Point3D.create(-0.01, 0.02, 0)
-    linearDim = sketchDims.addDistanceDimension(arcEndLine.startSketchPoint, arcEndLine.endSketchPoint, 
+    linearDim = sketchDims.addDistanceDimension(firstFilletConst.startSketchPoint, firstFilletConst.endSketchPoint, 
                                                        adsk.fusion.DimensionOrientations.AlignedDimensionOrientation,
                                                        textPoint )
-    linearDim.value = filletRadius
+    linearDim.value = belt_geom.filletRadius/10
 
+    # Create the construction line for the center of the second root fillet
+    startpt = baseLine.endSketchPoint
+    endpt = futil.offsetPoint3D( baseLine.endSketchPoint.geometry, 0, belt_geom.filletRadius/10, 0)
+    secondFilletConst = sketchCurves.sketchLines.addByTwoPoints( startpt, endpt )
+    secondFilletConst.isConstruction = True
+    geoConstraints.addPerpendicular( secondFilletConst, baseLine )
+    textPoint = adsk.core.Point3D.create( baseLineLength/10 + 0.05, 0.02, 0)
+    linearDim = sketchDims.addDistanceDimension(secondFilletConst.startSketchPoint, secondFilletConst.endSketchPoint, 
+                                                       adsk.fusion.DimensionOrientations.AlignedDimensionOrientation,
+                                                       textPoint )
+    linearDim.value = belt_geom.filletRadius/10
+
+    # Create the construction line for the center of the main tooth bump
+    toothBumpOffset = ( belt_geom.toothHeight - belt_geom.toothBumpRadius ) / 10
     toothline = sketchCurves.sketchLines.addByTwoPoints( 
-        adsk.core.Point3D.create( baseLineLength/2, 0, 0), adsk.core.Point3D.create(  baseLineLength/2, toothBumpOffset, 0) )
+        adsk.core.Point3D.create( baseLineLength/20, 0, 0), 
+        adsk.core.Point3D.create( baseLineLength/20, toothBumpOffset, 0) )
     toothline.isConstruction = True
     geoConstraints.addPerpendicular( toothline, baseLine )
-    geoConstraints.addCoincident( toothline.startSketchPoint, baseLine )
-    textPoint = adsk.core.Point3D.create( baseLineLength/2, toothBumpOffset, 0)
+    geoConstraints.addMidPoint( toothline.startSketchPoint, baseLine )
+    textPoint = adsk.core.Point3D.create( baseLineLength/20, toothBumpOffset, 0)
     textPoint.translateBy( adsk.core.Vector3D.create( -0.02, 0, 0) )
     linearDim = sketchDims.addDistanceDimension(toothline.startSketchPoint, toothline.endSketchPoint, 
                                                        adsk.fusion.DimensionOrientations.AlignedDimensionOrientation,
@@ -439,104 +457,39 @@ def createHTD_5mmProfile( sketch: adsk.fusion.Sketch ):
     linearDim.value = toothBumpOffset
 
     firstFillet = sketchCurves.sketchArcs.addByCenterStartSweep( 
-        arcEndLine.endSketchPoint, baseLine.startSketchPoint, filletSweepAngle )
-    geoConstraints.addTangent( firstFillet, baseLine )
-    geoConstraints.addCoincident( firstFillet.centerSketchPoint, arcEndLine.endSketchPoint )
+        firstFilletConst.endSketchPoint, baseLine.startSketchPoint, 1.57 )
+        # firstFilletConst.endSketchPoint, baseLine.startSketchPoint, belt_geom.filletSweepAngle )
+    # geoConstraints.addTangent( firstFillet, baseLine )
+    geoConstraints.addCoincident( firstFillet.centerSketchPoint, firstFilletConst.endSketchPoint )
 
-    toothBump = sketchCurves.sketchArcs.addByCenterStartSweep( 
-        toothline.endSketchPoint, firstFillet.endSketchPoint, toothBumpSweepAngle )
+    secondFillet = sketchCurves.sketchArcs.addByCenterStartSweep( 
+        secondFilletConst.endSketchPoint, baseLine.endSketchPoint, -1.57 )
+        # secondFilletConst.endSketchPoint, baseLine.endSketchPoint, -belt_geom.filletSweepAngle )
+    geoConstraints.addCoincident( secondFillet.centerSketchPoint, secondFilletConst.endSketchPoint )
+    # geoConstraints.addCoincident( secondFillet.startSketchPoint, toothBump.endSketchPoint )
+    # geoConstraints.addCoincident( secondFillet.endSketchPoint, baseLine.endSketchPoint )
+
+    toothBump = sketchCurves.sketchArcs.addByCenterStartEnd( 
+        toothline.endSketchPoint, secondFillet.startSketchPoint, firstFillet.endSketchPoint )
     geoConstraints.addCoincident(toothBump.centerSketchPoint, toothline.endSketchPoint )
-    geoConstraints.addTangent(firstFillet, toothBump )
     textPoint = toothline.startSketchPoint.geometry.copy()
     textPoint.translateBy( adsk.core.Vector3D.create( -.05, .05, 0) )
     cirDim = sketchDims.addRadialDimension( toothBump, textPoint )
-    cirDim.value = toothBumpRadius
+    cirDim.value = belt_geom.toothBumpRadius/10
 
-    secondFillet = sketchCurves.sketchArcs.addByCenterStartSweep( 
-        adsk.core.Point3D.create( baseLineLength, filletRadius, 0), toothBump.startSketchPoint, filletSweepAngle )
-    geoConstraints.addCoincident( secondFillet.endSketchPoint, baseLine.endSketchPoint )
-    geoConstraints.addTangent( secondFillet, baseLine )
-    geoConstraints.addTangent( secondFillet, toothBump )
-
-    textPoint = secondFillet.centerSketchPoint.geometry.copy()
-    textPoint.translateBy( adsk.core.Vector3D.create( .05, .05, 0) )
-    arcDim = sketchDims.addRadialDimension( secondFillet, textPoint )
-    arcDim.value = filletRadius
+    geoConstraints.addTangent( firstFillet, toothBump )
 
     return baseLine
 
-# Create the GT2 3mm tooth profile.
-def createGT2_3mmProfile( parentSketch: adsk.fusion.Sketch ):
-    geoConstraints = parentSketch.geometricConstraints
 
-    baseLineLength = 0.2044505
-    filletRadius = 0.035
-    toothBumpRadius = 0.085
-    toothBumpOffset = 0.025
-    filletSweepAngle = 1.64322  # 94.14961 degrees
-    toothBumpSweepAngle = -3.28806  # 188.3922 degrees
 
-    # Create the tooth profile at the origin
-    originPt = adsk.core.Point3D.create( 0, 0, 0)
-    baseLine = parentSketch.sketchCurves.sketchLines.addByTwoPoints( 
-        originPt, adsk.core.Point3D.create( baseLineLength, 0, 0) )
-    arcEndLine = parentSketch.sketchCurves.sketchLines.addByTwoPoints( 
-        baseLine.startSketchPoint, adsk.core.Point3D.create( 0, filletRadius, 0) )
-    arcEndLine.isConstruction = True
-    geoConstraints.addPerpendicular( arcEndLine, baseLine )
-    textPoint = adsk.core.Point3D.create(-0.01, 0.02, 0)
-    linearDim = parentSketch.sketchDimensions.addDistanceDimension(arcEndLine.startSketchPoint, arcEndLine.endSketchPoint, 
-                                                       adsk.fusion.DimensionOrientations.AlignedDimensionOrientation,
-                                                       textPoint )
-    linearDim.value = filletRadius
+def createPitchLoop( sketch: adsk.fusion.Sketch, ccLine: CCLine.CCLine, isLinked:bool = False ) -> adsk.core.ObjectCollection :
 
-    toothline = parentSketch.sketchCurves.sketchLines.addByTwoPoints( 
-        adsk.core.Point3D.create( baseLineLength/2, 0, 0), adsk.core.Point3D.create(  baseLineLength/2, toothBumpOffset, 0) )
-    toothline.isConstruction = True
-    geoConstraints.addPerpendicular( toothline, baseLine )
-    geoConstraints.addCoincident( toothline.startSketchPoint, baseLine )
-    textPoint = adsk.core.Point3D.create( baseLineLength/2, toothBumpOffset, 0)
-    textPoint.translateBy( adsk.core.Vector3D.create( -0.02, 0, 0) )
-    linearDim = parentSketch.sketchDimensions.addDistanceDimension(toothline.startSketchPoint, toothline.endSketchPoint, 
-                                                       adsk.fusion.DimensionOrientations.AlignedDimensionOrientation,
-                                                       textPoint )
-    linearDim.value = toothBumpOffset
-
-    firstFillet = parentSketch.sketchCurves.sketchArcs.addByCenterStartSweep( 
-        arcEndLine.endSketchPoint, baseLine.startSketchPoint, filletSweepAngle )
-    geoConstraints.addTangent( firstFillet, baseLine )
-    geoConstraints.addCoincident( firstFillet.centerSketchPoint, arcEndLine.endSketchPoint )
-
-    toothBump = parentSketch.sketchCurves.sketchArcs.addByCenterStartSweep( 
-        toothline.endSketchPoint, firstFillet.endSketchPoint, toothBumpSweepAngle )
-    geoConstraints.addCoincident(toothBump.centerSketchPoint, toothline.endSketchPoint )
-    geoConstraints.addTangent(firstFillet, toothBump )
-    textPoint = toothline.startSketchPoint.geometry.copy()
-    textPoint.translateBy( adsk.core.Vector3D.create( -.05, .05, 0) )
-    cirDim = parentSketch.sketchDimensions.addRadialDimension( toothBump, textPoint )
-    cirDim.value = toothBumpRadius
-
-    secondFillet = parentSketch.sketchCurves.sketchArcs.addByCenterStartSweep( 
-        adsk.core.Point3D.create( baseLineLength, filletRadius, 0), toothBump.startSketchPoint, filletSweepAngle )
-    geoConstraints.addCoincident( secondFillet.endSketchPoint, baseLine.endSketchPoint )
-    geoConstraints.addTangent( secondFillet, baseLine )
-    geoConstraints.addTangent( secondFillet, toothBump )
-
-    textPoint = secondFillet.centerSketchPoint.geometry.copy()
-    textPoint.translateBy( adsk.core.Vector3D.create( .05, .05, 0) )
-    arcDim = parentSketch.sketchDimensions.addRadialDimension( secondFillet, textPoint )
-    arcDim.value = filletRadius
-
-    return baseLine
-
-def createPitchLoopFromCircles( sketch: adsk.fusion.Sketch, 
-                               c1: adsk.core.Circle3D, c2: adsk.core.Circle3D ) -> adsk.core.ObjectCollection :
     geoConstraints = sketch.geometricConstraints
 
-    # Create the end circles in the sketch
-    circle1 = sketch.sketchCurves.sketchCircles.addByCenterRadius( c1.center, c1.radius )
+    # Project the pitch circles into the sketch
+    circle1, circle2 = sketch.project2( [ccLine.pitchCircle1, ccLine.pitchCircle2], isLinked )
     circle1.isConstruction = True
-    circle2 = sketch.sketchCurves.sketchCircles.addByCenterRadius( c2.center, c2.radius )
     circle2.isConstruction = True
 
     # Create pitch line curves from two circles
@@ -587,10 +540,11 @@ def createPitchLoopFromCircles( sketch: adsk.fusion.Sketch,
 
     return connectedCurves
 
+
 # Find the anchor line and endpoint on that line to use for the tooth starting point
 def findToothAnchor( insideLoop: adsk.fusion.ProfileLoop ) :
 
-    # Determin the centroid of the profile loop
+    # Determine the centroid of the profile loop
     bbox = insideLoop.profileCurves.item(0).sketchEntity.boundingBox
     i = 0
     while i < insideLoop.profileCurves.count:
@@ -625,3 +579,39 @@ def findToothAnchor( insideLoop: adsk.fusion.ProfileLoop ) :
         i += 1
 
     return (lineCurve, lineNormal, toothAnchorPoint)
+
+
+def get_belt_geometry( motion: int ) -> TimingBeltGeom:
+
+    return belt_geometry[ motion - 1 ]
+
+    # if motion == 1:
+    #     # HTD 5mm
+    #     return belt_geometry[0]
+    #     # beltPitchLength = 5
+    #     # beltThickness = 0.174
+    # elif motion == 2:
+    #     # GT2 3mm
+    #     reutrn belt_geometry[1]
+    # else:
+    #     # RT25
+    #     return belt_geometry[2]
+    #     # beltPitchLength = 3
+    #     # beltThickness = 0.126
+
+def get_component_name( motion: int, toothCount: int, widthMM: float ) -> str:
+
+    if motion == 1:
+        comp_name = f"Belt HTD_5mm-{toothCount}Tx{int(widthMM)}mm"
+    elif motion == 2:
+        comp_name = f"Belt GT2_3mm-{toothCount}Tx{int(widthMM)}mm"
+    elif motion == 3:
+        comp_name = "Belt RT25-{}Tx{:.3f}in".format( toothCount, widthMM / 25.4 )
+    elif motion == 4:
+        comp_name = f"Chain #25H {toothCount} Links"
+    elif motion == 5:
+        comp_name = f"Chain #35 {toothCount} Links"
+    else:
+        comp_name = f'Unknown Motion Type {motion}'
+
+    return comp_name
