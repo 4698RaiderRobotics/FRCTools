@@ -15,14 +15,14 @@ After installation close Fusion if it was open and reopen it.  The FRCTools Add-
 === Create C-C Distance Tool image:icons/CCDistance.png['C-C Distance', 30]
 TIP: kbd:[Sketch Tab] menu:Create[FRCTools > C-C Distance]
 
-This tool creates a Center-to-Center Distance object.  It determines the correct spacing for 20DP Gears, HTD 5mm Belts, and GT2 3mm Belts.  It also creates a set of linked sketch entities that represent the C-C Distance, pitch diameter circles, OD circles and a text label that effectively documents the parameters used to find the spacing in the sketch.  Deleting any part of the C-C Distance will delete all of it.  The C-C Distance can be edited by right clicking on it and selecting `Edit C-C Distance` or by selecting an existing C-C Distance within the C-C Distance command.
+This tool creates a Center-to-Center Distance object.  It determines the correct spacing for 20DP Gears, HTD 5mm Belts, GT2 3mm Belts, RT25 Belts, #25H chain and #35 chain.  It also creates a set of linked sketch entities that represent the C-C Distance, pitch diameter circles, OD circles and a text label that effectively documents the parameters used to find the spacing in the sketch.  Deleting any part of the C-C Distance will delete all of it.
 
 image::CCDistanceCreate.png[]
 
 === Edit C-C Distance Tool image:icons/CCDistance.png['C-C Distance', 30]
-TIP: kbd:[Sketch Tab] menu:Modify[FRCTools > C-C Distance]
+TIP: kbd:[Sketch Tab] menu:Modify[FRCTools > Edit C-C Distance]
 
-This tool allows for the editing of an existing C-C Distance object. The C-C Distance can be edited by right clicking on it and selecting `Edit C-C Distance` from the popup menu or by selecting an existing C-C Distance within the C-C Distance command. The linked entities can be edited as a unit.  Deleting any part of the C-C Distance will delete all of it.  The C-C Distance can be edited by right clicking on it and selecting `Edit C-C Distance` or by selecting an existing C-C Distance within the C-C Distance command.
+This tool allows for the editing of an existing C-C Distance object. The C-C Distance can be edited by right clicking on it and selecting `Edit C-C Distance` from the popup menu or by selecting an existing C-C Distance within the C-C Distance command. The linked entities can be edited as a unit.  Deleting any part of the C-C Distance will delete all of it.  A C-C Distance can be edited by right clicking on it and selecting `Edit C-C Distance` or by selecting an existing C-C Distance within the Edit C-C Distance command.
 
 image::CCDistanceEdit.png[]
 
@@ -37,9 +37,9 @@ image::BoltPatternCreate.png[]
 == Solid Tab Tools
 
 === Timing Belt Tool image:icons/TimingBelt.png['Timing Belt', 30]
-TIP: kbd:[Solid Tab] menu:Create[FRCTools > Extrude Timing Belt]
+TIP: kbd:[Solid Tab] menu:Create[FRCTools > Extrude Belt/Chain]
 
-This tool generates Timing Belt solids from a C-C Distance input or alternatively from two pitch circles.  A simpliflied preview is used to speed up the UI response time.  The resulting solid body is not referenced to the C-C sketch geometry as this made the UI laggy and unresponsive.
+This tool generates Timing Belt or chain solids from a C-C Distance input.  A simpliflied preview is used to speed up the UI response time.  For chains and timing belts without teeth the body if referenced to the C-C Distance entity and will update position and size with it.  It will not update correctly if the belt or chain type is changed.  For toothed belts, the solid body is not referenced to the C-C sketch geometry as this made the UI laggy and unresponsive. A C-C Distance can be extruded by right clicking on it and selecting `Extrude Belt/Chain` or by selecting an existing C-C Distance within the C-C Distance command
 
 .Preview of the solid to be created by the Timing Belt tool
 image::TimingBeltPreview.png[]
@@ -66,6 +66,6 @@ image::TubifyDialog.png[]
 == Lighten Tool image:icons/Lighten.png['Lighten', 30]
 TIP: kbd:[Solid Tab] menu:Create[FRCTools > Lighten]
 
-This tool pockets a solid by offsetting profiles and cut extruding them through the solid.  It can be quite slow and is still very buggy.  It is a work in progress but does work in many situations. 
+This tool pockets a solid by offsetting profiles and cut extruding them through the solid.  A sketch should be created on the body to be lightened with spider-web lines where material should be kept.  Holding the Ctrl-key while selecting profiles delays the updating of the lighten tool graphics until Ctrl is released. 
 
 image::LightenDialog.png[]
