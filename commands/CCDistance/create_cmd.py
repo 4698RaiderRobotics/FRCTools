@@ -55,16 +55,20 @@ def command_execute(args: adsk.core.CommandEventArgs):
     startSketchPt = None
     endSketchPt = None
 
+    CCDialog.load_inputs( args.command.commandInputs )
+
     if CCDialog.curveSelection.selectionCount == 1 :
         selEntity = CCDialog.curveSelection.selection(0).entity
         if selEntity.objectType == adsk.fusion.SketchCircle.classType() :
+            startSketchPt = selEntity.centerSketchPoint
+        elif selEntity.objectType == adsk.fusion.SketchArc.classType() :
             startSketchPt = selEntity.centerSketchPoint
         else :
             startSketchPt = selEntity
 
     ccLine.line = ccutil.createCCLine( startSketchPt, endSketchPt )
 
-    ccLine.data = CCDialog.generate_ccline_data()
+    ccLine.data = CCDialog.generate_ccline_data( args.command.commandInputs )
 
     ccutil.calcCCLineData( ccLine.data )
     if ccLine.data.ccDistIN < 0.001:
