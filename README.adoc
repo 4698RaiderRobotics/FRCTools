@@ -36,6 +36,14 @@ image::BoltPatternCreate.png[]
 
 == Solid Tab Tools
 
+=== Shaft Endings Tool image:icons/ShaftEndings.png['ShaftEndings', 30]
+TIP: kbd:[Solid Tab] menu:Create[FRCTools > Shaft Endings]
+
+This tool generates Shaft end operations on 1/2", 3/8" and 1/4" shafts.  It can put an e-clip or snap ring groove on the end of the shaft. It can also put a center hole in the shaft.
+
+.Shaft Endings Tool
+image::ShaftEndingExample.png[]
+
 === Timing Belt Tool image:icons/TimingBelt.png['Timing Belt', 30]
 TIP: kbd:[Solid Tab] menu:Create[FRCTools > Extrude Belt/Chain]
 
