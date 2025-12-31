@@ -67,6 +67,7 @@ Section "Add in" SecAddIn
   File config.py
   File /r /x __pycache__ /x *.pyc commands
   File /r /x __pycache__ /x *.pyc lib
+  File /r /x __pycache__ /x *.pyc generators
   
   ;Store installation folder
   WriteRegStr HKCU "Software\${APP_REG_ID}" "" $INSTDIR

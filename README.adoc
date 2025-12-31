@@ -6,6 +6,13 @@
 
 These are some tools to speed up some CAD operations that occur frequently in FRC robot design.  This work was inspired by the great tools the community has made available for OnShape.
 
+Also consider using https://github.com/hammerheads5000/FRC-COTS[Team 5000s FRC-COTS] to manage COTS files.
+
+*NEW in Version 1.4.0:*
+
+* Shaft end operations (<<shaft-endings>>)
+* Generator files included for chain sprockets and timing belt pulleys (generators subfolder)
+
 == Installation
 Download the https://github.com/4698RaiderRobotics/FRCTools/releases[latest release^] from GitHub.  For Windows there is an installer that will put the Add-In in the $USER\AppData\Roaming\Autodesk\Autodesk Fusion 360\API\AddIns\FRCTools directory by default.  This is where Fusion automatically looks for Add-ins.  Using the installer also allows for uninstallation with the "Add/Remove Programs" functionality.  There is also a zip archive that can be used on MacOS (I think).  I haven't tried MacOS to see if these tools even work on that platform.
 
@@ -36,6 +43,7 @@ image::BoltPatternCreate.png[]
 
 == Solid Tab Tools
 
+[#shaft-endings]
 === Shaft Endings Tool image:icons/ShaftEndings.png['ShaftEndings', 30]
 TIP: kbd:[Solid Tab] menu:Create[FRCTools > Shaft Endings]
 
@@ -57,6 +65,8 @@ image::TimingBeltDone.png[]
 
 == Timing Pulley Tool image:icons/TimingPulley.png['Timing Pulley', 30]
 TIP: kbd:[Solid Tab] menu:Create[FRCTools > Timing Pulley]
+
+NOTE: DEPRECIATED!  Use the generator design files instead.  They are more flexible.
 
 This tool creates very simple HTD 5mm or GT2 3mm timing pulley shapes.  It does not add flanges or center bores.
 

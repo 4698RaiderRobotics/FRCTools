@@ -8,7 +8,8 @@ echo "Extracted version is $version"
 
 "C:/Program Files/7-Zip/7z.exe" d $build_path/$program_basename.zip *
 
-"C:/Program Files/7-Zip/7z.exe" a $build_path/$program_basename.zip *.py *.manifest -ir!lib/* -ir!commands/* -xr!__pycache__
+"C:/Program Files/7-Zip/7z.exe" a $build_path/$program_basename.zip \
+    *.py *.manifest -ir!lib/* -ir!commands/* -ir!generators/* -xr!__pycache__
 
 "C:/Program Files (x86)/NSIS/makensis.exe" -V4 ./win_install.nsi
 
