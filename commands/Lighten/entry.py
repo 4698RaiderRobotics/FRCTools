@@ -687,12 +687,15 @@ def filletProfiles( solid: adsk.fusion.BRepBody, extrudeFeat: adsk.fusion.Extrud
     # Determine the edges that are perpendicular to the profile plane and touch it
     i = 0
     perpendicularEdges = adsk.core.ObjectCollection.create()
+    futil.log( f'Round 1 - Processing {extrudeFeat.sideFaces.count} faces...')
+    futil.log( f'Round 1 - Solid faces {solid.faces.count} faces...')
     for s in extrudeFeat.sideFaces:
         for edge in s.edges:
             i += 1
             if edge.geometry.objectType == adsk.core.Line3D.classType():
                 line:adsk.core.Line3D = edge.geometry
-                if plane.isPerpendicularToLine( line ) and len(plane.intersectWithCurve(line)) > 0 :
+                # if plane.isPerpendicularToLine( line ) and len(plane.intersectWithCurve(line)) > 0 :
+                if plane.isPerpendicularToLine( line ) :
                     if not perpendicularEdges.contains( edge ) :
                         perpendicularEdges.add( edge )
     
@@ -709,7 +712,7 @@ def filletProfiles( solid: adsk.fusion.BRepBody, extrudeFeat: adsk.fusion.Extrud
                             perpendicularEdges.add( edge )
                             break
 
-    futil.log(f'Processed edges = {i}, PerpAndTouching = {perpAndTouchingEdges.count}, perp edges = {perpendicularEdges.count}')
+    futil.log(f'Round 1 - Processed edges = {i}, perp edges = {perpendicularEdges.count}')
 
     fillets = solid.parentComponent.features.filletFeatures
     filletRadius = adsk.core.ValueInput.createByReal( cornerRadius )
@@ -721,19 +724,24 @@ def filletProfiles( solid: adsk.fusion.BRepBody, extrudeFeat: adsk.fusion.Extrud
     filletFeats.add( newFillet )
 
     round = 2
-    while round < 6:
+    while round < 10:
+        futil.log( f'Round {round} - Processing {solid.faces.count} faces...')
+        i = 0
         perpendicularEdges = adsk.core.ObjectCollection.create()
         for s in newFillet.faces:
             for edge in s.edges:
+                i += 1
                 if edge.geometry.objectType == adsk.core.Line3D.classType():
                     line:adsk.core.Line3D = edge.geometry
                     if plane.isPerpendicularToLine( line ) and len(plane.intersectWithCurve(line)) > 0 :
                         if not perpendicularEdges.contains( edge ) :
                             perpendicularEdges.add( edge )
-        
+        futil.log(f'Round {round} - Processed edges = {i}, perp edges = {perpendicularEdges.count}')
+
         filletFeatureInput = fillets.createInput()
         edgeSet = filletFeatureInput.edgeSetInputs.addConstantRadiusEdgeSet( perpendicularEdges, filletRadius, False)
         if not edgeSet.isValid:
+            futil.log( f'Round {round} - Edge Set Not Valid..')
             break
 
         futil.log( f'Round {round} - Input Fillet feature edgeset count = {edgeSet.entities.count}')

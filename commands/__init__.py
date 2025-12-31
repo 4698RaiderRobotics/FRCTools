@@ -15,7 +15,7 @@ ui = app.userInterface
 # You need to use aliases (import "entry" as "my_module") assuming you have the default module named "entry".
 from .BoltPattern import entry as BoltPattern
 from .CCDistance import entry as CCDistance
-from .FilletXpert import entry as FilletXpert
+from .ShaftEndings import entry as ShaftEndings
 from .Lighten import entry as Lighten
 from .TimingBelt import entry as TimingBelt
 from .TimingPulley import entry as TimingPulley
@@ -25,7 +25,7 @@ from .Tubify import entry as Tubify
 commands = [
     BoltPattern,
     CCDistance,
-    FilletXpert,
+    ShaftEndings,
     Lighten,
     TimingBelt,
     TimingPulley,
