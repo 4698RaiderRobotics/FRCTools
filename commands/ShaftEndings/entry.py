@@ -130,7 +130,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     select = inputs.addSelectionInput('shaft_selection', 'Shaft', 
                                               'Select the end of a shaft to modify.')
     select.addSelectionFilter( "PlanarFaces" )
-    select.setSelectionLimits( 1, 1 )
+    select.setSelectionLimits( 1, 0 )
 
     extTreatments = inputs.addDropDownCommandInput( 
         'external_treatments', 'External', adsk.core.DropDownStyles.TextListDropDownStyle
@@ -140,8 +140,9 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     items.add('E-clip', False)
     items.add('Snap Ring', False)
 
+    defaultLengthUnits = app.activeProduct.unitsManager.defaultLengthUnits
     offset = adsk.core.ValueInput.createByString('0')
-    clipOffset = inputs.addDistanceValueCommandInput('clip_offset', 'End Offset', offset)
+    clipOffset = inputs.addValueInput('clip_offset', 'End Offset', defaultLengthUnits, offset)
     clipOffset.isVisible = False
     clipOffset.minimumValue = 0.0
 
@@ -154,32 +155,45 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     
     items.item(0).isSelected = True
 
-    defaultLengthUnits = app.activeProduct.unitsManager.defaultLengthUnits
     diaVal = adsk.core.ValueInput.createByString('0.25in')
     diameter = inputs.addValueInput('diameter', 'Diameter', defaultLengthUnits, diaVal)
     diameter.isVisible = False
     diameter.minimumValue = 0.0
 
     depthVal = adsk.core.ValueInput.createByString('0.5in')
-    depth = inputs.addDistanceValueCommandInput('depth', 'Depth', depthVal)
+    depth = inputs.addValueInput('depth', 'Depth', defaultLengthUnits, depthVal)
     depth.isVisible = False
-    depth.minimumValue = 0.0
 
     # TODO Connect to the events that are needed by this command.
-    futil.add_handler(args.command.execute, command_execute, local_handlers=local_handlers)
+    futil.add_handler(args.command.preSelect, command_preselect, local_handlers=local_handlers)
     futil.add_handler(args.command.inputChanged, command_input_changed, local_handlers=local_handlers)
     futil.add_handler(args.command.executePreview, command_preview, local_handlers=local_handlers)
     futil.add_handler(args.command.validateInputs, command_validate_input, local_handlers=local_handlers)
     futil.add_handler(args.command.destroy, command_destroy, local_handlers=local_handlers)
 
 
-# This event handler is called when the user clicks the OK button in the command dialog or 
-# is immediately called after the created event not command inputs were created for the dialog.
-def command_execute(args: adsk.core.CommandEventArgs):
-    # General logging for debug.
-    futil.log(f'{CMD_NAME} Command Execute Event')
+# This event is fired when the user is hovering over an entity
+# but has not yet clicked on it.
+def command_preselect(args: adsk.core.SelectionEventArgs):
+    entity = args.selection.entity
 
-    inputs = args.command.commandInputs
+    shaft_diameterIn = get_shaft_diameter(entity)
+
+    shaft_eights = math.floor(shaft_diameterIn*8.0 + 0.5)
+    # futil.log(f'shaft_diameterIn = {shaft_diameterIn}, shaft eights = {shaft_eights}')
+
+    if shaft_eights < 2 or shaft_eights > 4:
+        args.isSelectable = False
+
+
+
+# # This event handler is called when the user clicks the OK button in the command dialog or 
+# # is immediately called after the created event not command inputs were created for the dialog.
+# def command_execute(args: adsk.core.CommandEventArgs):
+#     # General logging for debug.
+#     futil.log(f'{CMD_NAME} Command Execute Event')
+
+#     inputs = args.command.commandInputs
 
 
 # This event handler is called when the command needs to compute a new preview in the graphics window.
@@ -191,10 +205,10 @@ def command_preview(args: adsk.core.CommandEventArgs):
 
     select: adsk.core.SelectionCommandInput = inputs.itemById('shaft_selection')
     extTreatments: adsk.core.DropDownCommandInput = inputs.itemById('external_treatments')
-    clipOffset: adsk.core.DistanceValueCommandInput = inputs.itemById('clip_offset')
+    clipOffset: adsk.core.ValueCommandInput = inputs.itemById('clip_offset')
     intTreatments: adsk.core.DropDownCommandInput = inputs.itemById('internal_treatments')
     diameterInp: adsk.core.ValueCommandInput = inputs.itemById('diameter')
-    depthInp: adsk.core.DistanceValueCommandInput = inputs.itemById('depth')
+    depthInp: adsk.core.ValueCommandInput = inputs.itemById('depth')
 
     shaft_face: adsk.fusion.BRepFace = select.selection(0).entity
     paramBody = shaft_face.body
@@ -238,19 +252,23 @@ def command_preview(args: adsk.core.CommandEventArgs):
     if not cut_body:
         return
 
-    comp = paramBody.parentComponent
-    baseFeat = comp.features.baseFeatures.add()
-    baseFeat.startEdit()
-    comp.bRepBodies.add(cut_body, baseFeat)
-    baseFeat.finishEdit()
+    for idx in range(select.selectionCount):
+        shaft_face: adsk.fusion.BRepFace = select.selection(idx).entity
+        paramBody = shaft_face.body
+        comp = paramBody.parentComponent
+        transform_body = transform_cut_body(shaft_face, cut_body)
+        baseFeat = comp.features.baseFeatures.add()
+        baseFeat.startEdit()
+        comp.bRepBodies.add(transform_body, baseFeat)
+        baseFeat.finishEdit()
 
-    # Create a combine feature to subtract the pocket body from the part.
-    combineFeature = None
-    toolBodies = adsk.core.ObjectCollection.create()
-    toolBodies.add(baseFeat.bodies.item(0))
-    combineInput = comp.features.combineFeatures.createInput(paramBody, toolBodies)
-    combineInput.operation = adsk.fusion.FeatureOperations.CutFeatureOperation
-    combineFeature = comp.features.combineFeatures.add(combineInput)
+        # Create a combine feature to subtract the pocket body from the part.
+        combineFeature = None
+        toolBodies = adsk.core.ObjectCollection.create()
+        toolBodies.add(baseFeat.bodies.item(0))
+        combineInput = comp.features.combineFeatures.createInput(paramBody, toolBodies)
+        combineInput.operation = adsk.fusion.FeatureOperations.CutFeatureOperation
+        combineFeature = comp.features.combineFeatures.add(combineInput)
 
     args.isValidResult = True
 
@@ -265,13 +283,28 @@ def command_input_changed(args: adsk.core.InputChangedEventArgs):
 
     select: adsk.core.SelectionCommandInput = inputs.itemById('shaft_selection')
     extTreatments: adsk.core.DropDownCommandInput = inputs.itemById('external_treatments')
-    clipOffset: adsk.core.DistanceValueCommandInput = inputs.itemById('clip_offset')
+    clipOffset: adsk.core.ValueCommandInput = inputs.itemById('clip_offset')
     intTreatments: adsk.core.DropDownCommandInput = inputs.itemById('internal_treatments')
     diameter: adsk.core.ValueCommandInput = inputs.itemById('diameter')
-    depth: adsk.core.DistanceValueCommandInput = inputs.itemById('depth')
+    depth: adsk.core.ValueCommandInput = inputs.itemById('depth')
 
     # General logging for debug.
     futil.log(f'{CMD_NAME} Input Changed Event fired from a change to {changed_input.id}')
+
+    if changed_input.id == 'shaft_selection':
+        if select.selectionCount > 0:
+            shaft_dia = get_shaft_diameter(select.selection(0).entity)
+            idx = extTreatments.selectedItem.index
+            if idx == 1:  # E-clip
+                e_clip: EClipGroove = EClipCollection.get(shaft_dia)
+                clipOffset.isVisible = True
+                clipOffset.value = e_clip.end_margin * 2.54
+                clipOffset.minimumValue = e_clip.end_margin * 2.54
+            elif idx == 2:  # Snap Ring
+                snap_ring: SnapRingGroove = SnapRingCollection.get(shaft_dia)
+                clipOffset.isVisible = True
+                clipOffset.value = snap_ring.end_margin * 2.54
+                clipOffset.minimumValue = snap_ring.end_margin * 2.54
 
     if changed_input.id == 'external_treatments':
         shaft_dia = 0
@@ -375,27 +408,6 @@ def create_groove_body(face: adsk.fusion.BRepFace, groove: SnapRingGroove) -> ad
     # Subtract the shaft_disk from the cut body
     tempBrepMgr.booleanOperation(cut_body, shaft_disk, adsk.fusion.BooleanTypes.DifferenceBooleanType)
 
-    # occTrans = adsk.core.Matrix3D.create()
-    # paramBody = face.body
-    # occ = paramBody.assemblyContext
-    # if occ:
-    #     occTrans = occ.transform2
-    #     occTrans.invert()
-
-    # centroid = face.centroid
-    # eval = face.evaluator
-    # (_, param) = eval.getParameterAtPoint(centroid)
-    # (_, normal) = eval.getNormalAtPoint(centroid)
-    # (_, lengthDir, _) = eval.getFirstDerivative(param)
-    # lengthDir.normalize()
-    # widthDir = normal.crossProduct(lengthDir)
-
-    # # Define a transform to position the temp body onto the part.
-    # trans = adsk.core.Matrix3D.create()
-    # trans.setWithCoordinateSystem(centroid, lengthDir, widthDir, normal)
-    # tempBrepMgr.transform(cut_body, trans)
-    # tempBrepMgr.transform(cut_body, occTrans)
-    cut_body = transform_cut_body(face, cut_body)
     return cut_body
 
 def create_hole_body(face: adsk.fusion.BRepFace, dia, depth) -> adsk.fusion.BRepBody:
@@ -405,9 +417,8 @@ def create_hole_body(face: adsk.fusion.BRepFace, dia, depth) -> adsk.fusion.BRep
     origin = adsk.core.Point3D.create(0,0,0)
     depthPt = adsk.core.Point3D.create(0,0,-depth)
 
-    hole_cylinder = tempBrepMgr.createCylinderOrCone(origin, dia/2, depthPt, dia/2)
+    cut_body = tempBrepMgr.createCylinderOrCone(origin, dia/2, depthPt, dia/2)
 
-    cut_body = transform_cut_body(face, hole_cylinder)
     return cut_body
 
 def transform_cut_body(face: adsk.fusion.BRepFace, body: adsk.fusion.BRepBody) -> adsk.fusion.BRepBody:
@@ -432,7 +443,10 @@ def transform_cut_body(face: adsk.fusion.BRepFace, body: adsk.fusion.BRepBody) -
     # Define a transform to position the temp body onto the part.
     trans = adsk.core.Matrix3D.create()
     trans.setWithCoordinateSystem(centroid, lengthDir, widthDir, normal)
-    tempBrepMgr.transform(body, trans)
-    tempBrepMgr.transform(body, occTrans)
 
-    return body
+    # Don't modify the original body
+    trans_body = tempBrepMgr.copy(body)
+    tempBrepMgr.transform(trans_body, trans)
+    tempBrepMgr.transform(trans_body, occTrans)
+
+    return trans_body
