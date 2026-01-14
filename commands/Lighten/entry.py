@@ -147,10 +147,12 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     # Create a offset distance.
     default_value = adsk.core.ValueInput.createByString( dialog_default_values[units][0] )
     offsetDist = inputs.addValueInput('offset_distance', 'Offset Distance', defaultLengthUnits, default_value)
+    offsetDist.minimumValue = 0.00001
 
     # Create a pocket depth value input.
     default_value = adsk.core.ValueInput.createByString( dialog_default_values[units][1] )
     pocketDepth = inputs.addValueInput('pocket_depth', 'Pocket Depth', defaultLengthUnits, default_value)
+    pocketDepth.minimumValue = 0.00001
 
     # Disable filleting
     inputs.addBoolValueInput( "disable_fillet", "Disable Filleting", True )
@@ -158,6 +160,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     # Create a corner radius value input.
     default_value = adsk.core.ValueInput.createByString( dialog_default_values[units][2] )
     cornerRadius = inputs.addValueInput('corner_radius', 'Corner Radius', defaultLengthUnits, default_value)
+    cornerRadius.minimumValue = 0.00001
     cornerRadius.isEnabled = True
 
     # Connect to the events that are needed by this command.
@@ -206,7 +209,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
         start_timeline_pos = solid.parentComponent.parentDesign.timeline.markerPosition
 
-        createBrepExtrudes( solid, lightenProfileList, pocketDepth.value )
+        createBrepExtrudes( solid, lightenProfileList, pocketDepth.value, disableFillet.value )
 
         if args.firingEvent.name == "OnExecute" :
             lightenProfileList[0].profile.parentSketch.isLightBulbOn = False
@@ -426,6 +429,13 @@ def command_validate_input(args: adsk.core.ValidateInputsEventArgs):
 
     inputs = args.inputs
 
+    # offsetDist: adsk.core.ValueCommandInput = inputs.itemById('offset_distance')
+    disableFillet: adsk.core.BoolValueCommandInput = inputs.itemById('disable_fillet')
+    cornerRadius: adsk.core.ValueCommandInput = inputs.itemById('corner_radius')
+
+    if cornerRadius.value < 0.00001 and not disableFillet.value:
+        args.areInputsValid = False
+
 def command_keydown(args: adsk.core.KeyboardEventArgs):
     global ControlKeyHeldDown
 
@@ -600,7 +610,7 @@ def offsetProfileTempBrep( lightenprof: LightenProfile ) :
 
 #     return extrudeFeature
 
-def createBrepExtrudes( solid: adsk.fusion.BRepBody, profiles: list[LightenProfile], depth: float ) :
+def createBrepExtrudes( solid: adsk.fusion.BRepBody, profiles: list[LightenProfile], depth: float, noFillet: bool ) :
 
     futil.log( f'createBrepExtrudes for {len(profiles)} profiles.')
 
@@ -630,7 +640,8 @@ def createBrepExtrudes( solid: adsk.fusion.BRepBody, profiles: list[LightenProfi
         extInput.setDistanceExtent(False, distance)
         extInput.baseFeature = baseFeature
         ext = extrudes.add(extInput)
-        fillets = filletProfiles( solid, ext, profiles[0].filletRadius )
+        if not noFillet:
+            fillets = filletProfiles( solid, ext, profiles[0].filletRadius )
 
     # Extrude the negative direction faces
     if NegativeExtrudeProfiles.count > 0 :
@@ -641,7 +652,8 @@ def createBrepExtrudes( solid: adsk.fusion.BRepBody, profiles: list[LightenProfi
         extInput.setDistanceExtent(False, distance)
         extInput.baseFeature = baseFeature
         ext = extrudes.add(extInput)
-        fillets = filletProfiles( solid, ext, profiles[0].filletRadius )
+        if not noFillet:
+            fillets = filletProfiles( solid, ext, profiles[0].filletRadius )
 
     # Remove the original offset face
     for s in surfaces:
@@ -749,7 +761,7 @@ def filletProfiles( solid: adsk.fusion.BRepBody, extrudeFeat: adsk.fusion.Extrud
 
     round = 2
     while round < 10:
-        futil.log( f'Round {round} - Processing {solid.faces.count} faces...')
+        # futil.log( f'Round {round} - Processing {solid.faces.count} faces...')
         i = 0
         perpendicularEdges = adsk.core.ObjectCollection.create()
         for s in newFillet.faces:
@@ -760,21 +772,42 @@ def filletProfiles( solid: adsk.fusion.BRepBody, extrudeFeat: adsk.fusion.Extrud
                     if plane.isPerpendicularToLine( line ) and len(plane.intersectWithCurve(line)) > 0 :
                         if not perpendicularEdges.contains( edge ) :
                             perpendicularEdges.add( edge )
-        futil.log(f'Round {round} - Processed edges = {i}, perp edges = {perpendicularEdges.count}')
+        # futil.log(f'Round {round} - Processed edges = {i}, perp edges = {perpendicularEdges.count}')
 
-        filletFeatureInput = fillets.createInput()
-        edgeSet = filletFeatureInput.edgeSetInputs.addConstantRadiusEdgeSet( perpendicularEdges, filletRadius, False)
-        if not edgeSet.isValid:
-            futil.log( f'Round {round} - Edge Set Not Valid..')
+        nonTangentEdges = adsk.core.ObjectCollection.create()
+        for edge in perpendicularEdges.asArray():
+            edge: adsk.fusion.BRepEdge = edge
+            edgept = edge.pointOnEdge
+            faces: adsk.fusion.BRepFaces = edge.faces
+            face1 = faces.item(0)
+            _, face1_normal = face1.evaluator.getNormalAtPoint(edgept)
+            face2 = faces.item(1)
+            _, face2_normal = face2.evaluator.getNormalAtPoint(edgept)
+            if abs(face1_normal.dotProduct( face2_normal )) < 0.9999 :
+                nonTangentEdges.add( edge )
+                futil.log(f'NonTangent edge startpt = {futil.format_Point3D(edge.startVertex.geometry)}')
+
+        # if nonTangentEdges.count == 0:
+        #     break
+
+        try:
+            filletFeatureInput = fillets.createInput()
+            edgeSet = filletFeatureInput.edgeSetInputs.addConstantRadiusEdgeSet( nonTangentEdges, filletRadius, False)
+            # if not edgeSet.isValid:
+            #     futil.log( f'Round {round} - Edge Set Not Valid..')
+            #     break
+
+            futil.log( f'Round {round} - Input Fillet feature edgeset count = {edgeSet.entities.count}')
+            newFillet = fillets.add( filletFeatureInput )
+            futil.log( f'Round {round} - Output Fillet faces count = {newFillet.faces.count}')
+            if newFillet.faces.count == 0 :
+                newFillet.deleteMe()
+                break
+            filletFeats.add( newFillet )
+        except:
+            futil.log(f'Round {round} - FAILED...')
             break
 
-        futil.log( f'Round {round} - Input Fillet feature edgeset count = {edgeSet.entities.count}')
-        newFillet = fillets.add( filletFeatureInput )
-        futil.log( f'Round {round} - Output Fillet faces count = {newFillet.faces.count}')
-        if newFillet.faces.count == 0 :
-            newFillet.deleteMe()
-            break
-        filletFeats.add( newFillet )
         round += 1
 
     return filletFeats
