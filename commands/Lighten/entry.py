@@ -14,6 +14,16 @@ from ... import config
 # See:
 # BRepWire.offsetPlanarWire
 
+# Default values to start with in the lighten dialog
+# offset_distance, pocket_depth, corner_radius
+dialog_default_values = { 
+    'in' : [ '0.0625', '0.25', '0.10'],
+    'ft' : [ '0.0063', '0.025', '0.010'],
+    'mm' : [ '2', '6', '3' ],
+    'cm' : [ '0.2', '0.6', '0.3' ],
+    'm' : [ '0.002', '0.006', '0.003' ]
+}
+
 
 
 app = adsk.core.Application.get()
@@ -126,22 +136,27 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     profileSelection.addSelectionFilter( "Profiles" )
     profileSelection.setSelectionLimits( 1, 0 )
 
+    defaultLengthUnits = app.activeProduct.unitsManager.defaultLengthUnits
+    units = defaultLengthUnits
+    try:
+        default_offset = dialog_default_values[units][0]
+    except:
+        units = 'in'
+    
+
     # Create a offset distance.
-    defaultLengthUnits = "in"
-    default_value = adsk.core.ValueInput.createByString('0.0625')
+    default_value = adsk.core.ValueInput.createByString( dialog_default_values[units][0] )
     offsetDist = inputs.addValueInput('offset_distance', 'Offset Distance', defaultLengthUnits, default_value)
 
     # Create a pocket depth value input.
-    defaultLengthUnits = "in"
-    default_value = adsk.core.ValueInput.createByString('0.25')
+    default_value = adsk.core.ValueInput.createByString( dialog_default_values[units][1] )
     pocketDepth = inputs.addValueInput('pocket_depth', 'Pocket Depth', defaultLengthUnits, default_value)
 
     # Disable filleting
     inputs.addBoolValueInput( "disable_fillet", "Disable Filleting", True )
 
     # Create a corner radius value input.
-    defaultLengthUnits = "in"
-    default_value = adsk.core.ValueInput.createByString('0.135')
+    default_value = adsk.core.ValueInput.createByString( dialog_default_values[units][2] )
     cornerRadius = inputs.addValueInput('corner_radius', 'Corner Radius', defaultLengthUnits, default_value)
     cornerRadius.isEnabled = True
 
@@ -506,15 +521,24 @@ def command_destroy(args: adsk.core.CommandEventArgs):
 #     return
 
 # Find the offset profile using the Temporary Breps :
-def offsetProfileTempBrep( profile: LightenProfile ) :
+def offsetProfileTempBrep( lightenprof: LightenProfile ) :
     # Get the temporary Brep manager
     tempBrepMgr = adsk.fusion.TemporaryBRepManager.get()
 
     profileCurves = []
-    sketchTransform = profile.profile.parentSketch.transform
-    normal = profile.profile.plane.normal
-    normal.transformBy( sketchTransform )
-    for p in profile.outerLoop.profileCurves:
+
+    profile = lightenprof.profile
+    sketchTransform = profile.parentSketch.transform
+
+    body_face = GetFaceUnderProfile( profile )
+    _, normal = body_face.evaluator.getNormalAtPoint( body_face.centroid )
+
+    # normal = profile.plane.normal
+    # face = profile.face
+    # normal.transformBy( sketchTransform )
+    # _, normal = face.evaluator.getNormalAtPoint( face.centroid )
+    # normal.transformBy( sketchTransform )
+    for p in lightenprof.outerLoop.profileCurves:
         c = p.geometry
         c.transformBy( sketchTransform )
         profileCurves.append( c )
@@ -524,20 +548,20 @@ def offsetProfileTempBrep( profile: LightenProfile ) :
 
     wire = body.wires.item(0)
 
-    OffsetWires = wire.offsetPlanarWire( normal, profile.offsetDist, 
+    OffsetWires = wire.offsetPlanarWire( normal, lightenprof.offsetDist, 
                                         adsk.fusion.OffsetCornerTypes.ExtendedOffsetCornerType )
     OFfsetFace = tempBrepMgr.createFaceFromPlanarWires( [OffsetWires] )
-    if profile.area < OFfsetFace.area :
+    if lightenprof.area < OFfsetFace.area :
         # Offset in the wrong direction....
         # Offset the other way
-        OffsetWires = wire.offsetPlanarWire( normal, -profile.offsetDist, 
+        OffsetWires = wire.offsetPlanarWire( normal, -lightenprof.offsetDist, 
                                         adsk.fusion.OffsetCornerTypes.ExtendedOffsetCornerType )
         OFfsetFace = tempBrepMgr.createFaceFromPlanarWires( [OffsetWires] )
-        profile.inverted = True
+        lightenprof.inverted = True
 
-    profile.offsetFace = OFfsetFace
+    lightenprof.offsetFace = OFfsetFace
 
-    profile.isComputed = True
+    lightenprof.isComputed = True
     
 
 # def extrudeProfiles( solid: adsk.fusion.BRepBody, sketch: adsk.fusion.Sketch, depth: float ) -> adsk.fusion.ExtrudeFeature :
@@ -802,3 +826,25 @@ def filletProfiles( solid: adsk.fusion.BRepBody, extrudeFeat: adsk.fusion.Extrud
 #         # sketchCurve.isConstruction = True
 
 #     return sketchCurve
+
+# Get the face the selected point lies on. The returned face will be in the context
+# of the root component.
+#
+# There is a case where more than one face can be found but in this case
+# None is returned. The case is when the point is very near the edge of
+# the face so it is ambiguous which face the point is on.
+def GetFaceUnderProfile( profile: adsk.fusion.Profile ) -> adsk.fusion.BRepFace:
+    sketch = profile.parentSketch
+    comp = sketch.parentComponent
+
+    centroid = profile.face.centroid
+
+    centroid.transformBy( sketch.transform )
+
+    foundFaces: adsk.core.ObjectCollection = comp.findBRepUsingPoint(centroid, adsk.fusion.BRepEntityTypes.BRepFaceEntityType, 0.01, True)
+    # showMessage( f'centroid = ({centroid.x:.3f}, {centroid.y:.3f}, {centroid.z:.3f} ), foundFaces = {foundFaces.count}')
+    if foundFaces.count == 0:
+        return None
+    else:
+        face: adsk.fusion.BRepFace = foundFaces.item(0)
+        return face
