@@ -20,6 +20,7 @@ from .Lighten import entry as Lighten
 from .TimingBelt import entry as TimingBelt
 from .TimingPulley import entry as TimingPulley
 from .Tubify import entry as Tubify
+from .ShaftGenerator import entry as ShaftGenerator
 
 # Fusion will automatically call the start() and stop() functions.
 commands = [
@@ -29,7 +30,8 @@ commands = [
     Lighten,
     TimingBelt,
     TimingPulley,
-    Tubify
+    Tubify,
+    ShaftGenerator
 ]
 
 ui_handlers = []
