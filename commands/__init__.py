@@ -21,6 +21,22 @@ from .TimingBelt import entry as TimingBelt
 from .TimingPulley import entry as TimingPulley
 from .Tubify import entry as Tubify
 from .ShaftGenerator import entry as ShaftGenerator
+from .elevator import entry as elevator
+from .rollerTwins import entry as rollers
+from .conveyor import entry as conveyor
+from .rollersAlongPath import entry as rollersAlongPath
+from .arm import entry as arm
+from .drivetrain import entry as drivetrain
+from .telescope import entry as telescope
+from .fixedshooter import entry as fixed_shooter
+from .varshooter import entry as variable_shooter
+from .spindex import entry as spindex
+from .turret import entry as turret
+from .belt import entry as belt
+from .structure import entry as structure
+from .frame import entry as frame
+from .gamepiece import entry as gamepiece
+
 
 # Fusion will automatically call the start() and stop() functions.
 commands = [
@@ -31,7 +47,22 @@ commands = [
     TimingBelt,
     TimingPulley,
     Tubify,
-    ShaftGenerator
+    ShaftGenerator,
+    elevator,
+    rollers,
+    conveyor,
+    rollersAlongPath,
+    arm,
+    drivetrain,
+    telescope,
+    fixed_shooter,
+    variable_shooter,
+    spindex,
+    turret,
+    belt,
+    structure,
+    frame,
+    gamepiece
 ]
 
 ui_handlers = []

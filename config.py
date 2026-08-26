@@ -30,6 +30,8 @@ SOLID_CREATE_ID = 'SolidCreatePanel'
 SKETCH_CREATE_ID = 'SketchCreatePanel'
 SKETCH_MODIFY_ID = 'SketchModifyPanel'
 FRC_TOOLS_DROPDOWN_ID = 'FRCToolsSubMenu'
+INSERT_ID = 'InsertPanel'
+MARKER_CAD_ID = 'MarkerCAD'
 
 def get_sketch_create_submenu() -> adsk.core.ToolbarControl:
     # Get the target workspace the button will be created in.
@@ -60,3 +62,7 @@ def get_solid_submenu() -> adsk.core.ToolbarControl:
 
     # Find the the FRCTools submenu.
     return panel.controls.itemById( FRC_TOOLS_DROPDOWN_ID )
+def get_marker_submenu() -> adsk.core.ToolbarControl:
+    workspace = ui.workspaces.itemById(WORKSPACE_ID)
+    panel = workspace.toolbarPanels.itemById(INSERT_ID)
+    return panel.controls.itemById(MARKER_CAD_ID)
