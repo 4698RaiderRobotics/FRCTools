@@ -15,6 +15,9 @@ class TimingBeltGeom :
     toothHeight: float          # Total height of the tooth
     filletRadius: float         # The fillet at the base of the tooth root
     toothBumpRadius: float      # The radius of the tooth bump
+    transitionRadius: float     # The radius of the transition curve for GT2 belts
+    transitionDim: float        # For HTD this is the width of the base of the tooth
+                                # For GT2 this is the offset of the centerPt of the transition Arc  
  
 
 belt_geometry = [
@@ -27,6 +30,8 @@ belt_geometry = [
         toothHeight = 2.06,
         filletRadius = 0.43,
         toothBumpRadius = 1.49,
+        transitionRadius = 0.0,
+        transitionDim = 3.05,
     ),
     TimingBeltGeom( 
         name = 'GT2 3mm',
@@ -35,8 +40,10 @@ belt_geometry = [
         width = 9,
         pitchLineDepth = 0.381,    
         toothHeight = 1.14,
-        filletRadius = 0.35,
+        filletRadius = 0.25,
         toothBumpRadius = 0.85,
+        transitionRadius = 1.52,
+        transitionDim = 0.61,
     ),
     TimingBeltGeom( 
         name = 'RT25',
@@ -47,26 +54,32 @@ belt_geometry = [
         toothHeight = 2.41,
         filletRadius = 0.53,
         toothBumpRadius = 1.8,
+        transitionRadius = 0.0,
+        transitionDim = 0.0,
     ),
     TimingBeltGeom( 
         name = '#25H Chain',
         pitchLength = 0.25 * 25.4,
-        thickness = 0.358 * 25.4,
-        width = 0.463 * 25.4,
-        pitchLineDepth = 0,    
-        toothHeight = 0,
-        filletRadius = 0,
-        toothBumpRadius = 0,
-    ),
-    TimingBeltGeom( 
-        name = '#35 Chain',
-        pitchLength = 0.375 * 25.4,
         thickness = 0.236 * 25.4,
         width = 0.354 * 25.4,
         pitchLineDepth = 0,    
         toothHeight = 0,
         filletRadius = 0,
         toothBumpRadius = 0,
+        transitionRadius = 0.0,
+        transitionDim = 0.0,
+    ),
+    TimingBeltGeom( 
+        name = '#35 Chain',
+        pitchLength = 0.375 * 25.4,
+        thickness = 0.358 * 25.4,
+        width = 0.463 * 25.4,
+        pitchLineDepth = 0,    
+        toothHeight = 0,
+        filletRadius = 0,
+        toothBumpRadius = 0,
+        transitionRadius = 0.0,
+        transitionDim = 0.0,
     )
 ]
 

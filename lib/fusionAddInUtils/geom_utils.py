@@ -92,3 +92,9 @@ def sketchLineNormal( line: adsk.fusion.SketchLine, towardPt: adsk.core.Point3D 
 def BBCentroid( bb: adsk.core.BoundingBox3D ) :
     sum = addPoint3D( bb.maxPoint, bb.minPoint )
     return adsk.core.Point3D.create( sum.x / 2, sum.y / 2, sum.z / 2 )
+
+def Arc3DTextPoint( arc: adsk.fusion.SketchArc ) -> adsk.core.Point3D:
+    eval = arc.geometry.evaluator
+    status, param0, param1 = eval.getParameterExtents()
+    status, arcMidPt = eval.getPointAtParameter( (param0 + param1) / 2 )
+    return midPoint3D( arcMidPt, arc.centerSketchPoint.geometry )

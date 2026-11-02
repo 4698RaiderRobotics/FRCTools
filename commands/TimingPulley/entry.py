@@ -4,11 +4,14 @@ import os
 import math
 from ...lib import fusionAddInUtils as futil
 from ... import config
+
+from ..TimingBelt.geometry import *
+
 app = adsk.core.Application.get()
 ui = app.userInterface
 
 
-# TODO *** Specify the command identity information. ***
+# *** Specify the command identity information. ***
 CMD_ID = f'{config.COMPANY_NAME}_{config.ADDIN_NAME}_TimingPulleyDialog'
 CMD_NAME = 'Timing Pulley'
 CMD_Description = 'Create a Timing Belt Pulley'
@@ -92,6 +95,8 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     default_value = adsk.core.ValueInput.createByString('11')
     inputs.addValueInput('belt_width', 'Belt Width', defaultLengthUnits, default_value)
 
+    use_root = inputs.addBoolValueInput( "use_root", "Use Root Component", True )
+
     # TODO Connect to the events that are needed by this command.
     futil.add_handler(args.command.execute, command_execute, local_handlers=local_handlers)
     futil.add_handler(args.command.inputChanged, command_input_changed, local_handlers=local_handlers)
@@ -103,6 +108,11 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     design = adsk.fusion.Design.cast(app.activeProduct)
     rootComp = design.rootComponent
     rootComp.isOriginFolderLightBulbOn = True
+
+    # Disable 'use_root' if a Part Design
+    if design.designIntent == adsk.fusion.DesignIntentTypes.PartDesignIntentType:
+        use_root.value = True
+        use_root.isEnabled = False
 
 
 # This event handler is called when the user clicks the OK button in the command dialog or 
@@ -117,39 +127,82 @@ def command_execute(args: adsk.core.CommandEventArgs):
     beltType: adsk.core.DropDownCommandInput = inputs.itemById('belt_type')
     toothCount: adsk.core.ValueCommandInput = inputs.itemById('tooth_count')
     beltWidth: adsk.core.ValueCommandInput = inputs.itemById('belt_width')
-
-    futil.print_Selection( planeSelection )
+    UseRoot: adsk.core.BoolValueCommandInput = inputs.itemById( "use_root" )
 
     sketchPlane = planeSelection.selection(0).entity
 
-   # Create a new component to put the sketches and geometry into
-    design = adsk.fusion.Design.cast(app.activeProduct)
-    rootComp = design.rootComponent
-    trans = adsk.core.Matrix3D.create()
-    workingOcc = rootComp.occurrences.addNewComponent( trans )
-    workingComp = workingOcc.component
-    # Create a new sketch for the belt
-    sketch = workingComp.sketches.add( sketchPlane, workingOcc )
+    try:
+
+        # Create a new component to put the sketches and geometry into
+        design = adsk.fusion.Design.cast(app.activeProduct)
+        rootComp = design.rootComponent
+        workingComp = rootComp
+        workingOcc = design.activeOccurrence
+        if design.designIntent == adsk.fusion.DesignIntentTypes.HybridDesignIntentType and not UseRoot.value:
+            workingOcc = rootComp.occurrences.addNewComponent( adsk.core.Matrix3D.create() )
+            workingComp = workingOcc.component
+        elif design.designIntent == adsk.fusion.DesignIntentTypes.AssemblyDesignIntentType:
+            raise Exception("Timing Pulleys Cannot be created in an Assembly Design.")
+
+        # Create a new sketch for the pulley
+        sketch = workingComp.sketches.add( sketchPlane, workingOcc )
 
 
-    if beltType.selectedItem.index == 0 :
-        workingComp.name = f"Pulley_HTD_5mm-{toothCount.value}Tx{int(beltWidth.value*10)}mm"
-        beltPitch = 5
-        createHTDPulleyGeometry( sketch, beltPitch, toothCount.value )
-    else:
-        workingComp.name = f"Pulley_GT2_3mm-{toothCount.value}Tx{int(beltWidth.value*10)}mm"
-        beltPitch = 3
-        createGT2PulleyGeometry( sketch, beltPitch, toothCount.value )
+        if beltType.selectedItem.index == 0 :
+            if workingComp != rootComp :
+                workingComp.name = f"Pulley_HTD_5mm-{toothCount.value}Tx{int(beltWidth.value*10)}mm"
+            createHTDPulleyGeometry( sketch, toothCount.value )
+        else:
+            if workingComp != rootComp :
+                workingComp.name = f"Pulley_GT2_3mm-{toothCount.value}Tx{int(beltWidth.value*10)}mm"
+            createGT2PulleyGeometry( sketch, toothCount.value )
 
-    # Extrude the pulley sketch 
-    if sketch.profiles.count != 1 :
-        futil.popup_error(f'Sketch does not have one profile, returned {sketch.profiles.count}.')
-        return
-    
-    extrudes = workingComp.features.extrudeFeatures
-    beltWidthValue = adsk.core.ValueInput.createByReal( beltWidth.value )
-    extrudes.addSimple(sketch.profiles.item(0), beltWidthValue, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+        # Extrude the pulley sketch 
+        if sketch.profiles.count != 2 :
+            futil.popup_error(f'Sketch does not have 2 profiles, has {sketch.profiles.count} profiles.')
+            return
 
+        plug_prof = sketch.profiles.item(0)
+        tooth_prof = sketch.profiles.item(1)
+        if plug_prof.face.area < tooth_prof.face.area :
+            plug_prof = sketch.profiles.item(1)
+            tooth_prof = sketch.profiles.item(0)
+
+        extrudes = workingComp.features.extrudeFeatures
+        beltWidthValue = adsk.core.ValueInput.createByReal( beltWidth.value )
+        profiles = adsk.core.ObjectCollection.createWithArray( [plug_prof, tooth_prof] )
+        cylExtrude = extrudes.addSimple(profiles, beltWidthValue, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+
+        # Get TemporaryBRepManager
+        tempBrepMgr = adsk.fusion.TemporaryBRepManager.get()
+        cylinder = tempBrepMgr.copy( cylExtrude.bodies.item(0) )
+
+        cutTooth = extrudes.addSimple(tooth_prof, beltWidthValue, adsk.fusion.FeatureOperations.CutFeatureOperation)
+
+        # Find the axis of the circular pattern
+        pitch_circle = None
+        cyl_edge = None
+        for edge in cylExtrude.bodies.item(0).edges:
+            if edge.geometry.classType() == adsk.core.Arc3D.classType() :
+                arc: adsk.core.Arc3D = edge.geometry
+                if not pitch_circle:
+                    pitch_circle = arc
+                    cyl_edge = edge
+                else:
+                    if arc.radius > pitch_circle.radius:
+                        pitch_circle = arc
+                        cyl_edge = edge
+
+
+        # Pattern the Cut tooth Feature around the pulley
+        patObj = adsk.core.ObjectCollection.createWithArray( [ cutTooth ] )
+        circPat = workingComp.features.circularPatternFeatures.createInput( patObj, cyl_edge )
+        circPat.quantity = adsk.core.ValueInput.createByString( 'n' )
+        circPat.patternComputeOption = adsk.fusion.PatternComputeOptions.IdenticalPatternCompute
+        workingComp.features.circularPatternFeatures.add( circPat )
+
+    except:
+        futil.handle_error( '        ============  Timing Pulley Extrude Failed  ============\n\n', True )
 
 # This event handler is called when the command needs to compute a new preview in the graphics window.
 def command_preview(args: adsk.core.CommandEventArgs):
@@ -200,249 +253,253 @@ def command_destroy(args: adsk.core.CommandEventArgs):
     rootComp = design.rootComponent
     rootComp.isOriginFolderLightBulbOn = False
 
+def createParameters( geom: TimingBeltGeom, toothCount: int ) :
+    design: adsk.fusion.Design = app.activeProduct
 
-def createHTDPulleyGeometry( sketch: adsk.fusion.Sketch, beltPitchMM: float, toothCount: int ) :
+    parameters = design.userParameters
+
+    teethVI = adsk.core.ValueInput.createByReal( toothCount )
+    parameters.add( 'n', teethVI, '', 'Number Of Teeth' )
+
+    widthVI = adsk.core.ValueInput.createByReal( geom.width / 10 )
+    parameters.add( 'width', widthVI, 'mm', 'Belt Width' )
+
+    pitchVI = adsk.core.ValueInput.createByReal( geom.pitchLength / 10 )
+    parameters.add( 'p', pitchVI, 'mm', 'Belt Pitch' )
+
+    pitchDiaVI = adsk.core.ValueInput.createByString( 'n * p / 3.14159' ) # in CM
+    pd_param = parameters.add( 'PD', pitchDiaVI, 'mm', 'Pitch Diameter' )
+
+# def getParameter( name: str ) :
+#     design: adsk.fusion.Design = app.activeProduct
+
+#     parameters = design.userParameters
+
+#     param = parameters.itemByName( name )
+#     if not param:
+#         futil.popup_error(f'Cannot find parameter "{name}".')
+
+#     return param
+
+def createHTDPulleyGeometry( sketch: adsk.fusion.Sketch, toothCount: int ) :
     geoConstraints = sketch.geometricConstraints
 
-    beltThickness = 1.74
-    topRadius = 0.43
-    rootRadius = 1.49
-    rootHeight = 2.06
-    rootWidth = 3.05
+    # Only setup for HTD-5M belts
+    geom = belt_geometry[0]
+
+    createParameters( geom, toothCount )
 
     # Create a single tooth of the pulley
-    pitch_diameter = toothCount * beltPitchMM / math.pi
-    outer_diameter = pitch_diameter - beltThickness
+    pitch_diameter = toothCount * geom.pitchLength / math.pi
 
-    # Create outer diameter circle
+    # Create pitch diameter circle
     centerPt = adsk.core.Point3D.create()
-    outerCircle = sketch.sketchCurves.sketchCircles.addByCenterRadius( centerPt, outer_diameter )
-    outerCircle.isConstruction = True
-    geoConstraints.addCoincident( outerCircle.centerSketchPoint, sketch.originPoint )
+    pitchCircle = sketch.sketchCurves.sketchCircles.addByCenterRadius( centerPt, pitch_diameter )
+    geoConstraints.addCoincident( pitchCircle.centerSketchPoint, sketch.originPoint )
 
-    textPoint = adsk.core.Point3D.create( -outer_diameter / 40, 0, 0 )
-    diameter = sketch.sketchDimensions.addDiameterDimension( outerCircle, textPoint )
-    diameter.value = outer_diameter / 10 # in cm
+    textPoint = adsk.core.Point3D.create( pitch_diameter / 40, pitch_diameter / 40, 0 )
+    diameter = sketch.sketchDimensions.addDiameterDimension( pitchCircle, textPoint )
+
+    # get ModelParameter
+    modelPrm: adsk.fusion.ModelParameter = diameter.parameter
+    modelPrm.expression = 'PD'
 
     # Create Vertical line from center to outerCircle
-    endPt = adsk.core.Point3D.create( 0, outer_diameter/20, 0 )
-    vertLine = sketch.sketchCurves.sketchLines.addByTwoPoints( outerCircle.centerSketchPoint, endPt )
+    endPt = adsk.core.Point3D.create( 0, pitch_diameter/20, 0 )
+    vertLine = sketch.sketchCurves.sketchLines.addByTwoPoints( pitchCircle.centerSketchPoint, endPt )
     vertLine.isConstruction = True
     # geoConstraints.addCoincident( vertLine.startSketchPoint, outerCircle.centerSketchPoint )
-    geoConstraints.addCoincident( vertLine.endSketchPoint, outerCircle )
+    geoConstraints.addCoincident( vertLine.endSketchPoint, pitchCircle )
     geoConstraints.addVertical( vertLine )
 
     # Create Pie line from center to outerCircle
-    endPt = adsk.core.Point3D.create( outer_diameter/20, 0, 0 )
-    pieLine = sketch.sketchCurves.sketchLines.addByTwoPoints( outerCircle.centerSketchPoint, endPt )
+    endPt = adsk.core.Point3D.create( pitch_diameter/20, 0, 0 )
+    pieLine = sketch.sketchCurves.sketchLines.addByTwoPoints( pitchCircle.centerSketchPoint, endPt )
     pieLine.isConstruction = True
     # geoConstraints.addCoincident( vertLine.startSketchPoint, outerCircle.centerSketchPoint )
-    geoConstraints.addCoincident( pieLine.endSketchPoint, outerCircle )
-    textPoint = adsk.core.Point3D.create( outer_diameter / 40, outer_diameter / 40, 0 )
+    geoConstraints.addCoincident( pieLine.endSketchPoint, pitchCircle )
+    textPoint = adsk.core.Point3D.create( geom.toothBumpRadius / 10, pitch_diameter / 30, 0 )
     angleDim = sketch.sketchDimensions.addAngularDimension( vertLine, pieLine, textPoint )
-    angleDim.value = math.pi / toothCount # in radians
+    # angleDim.value = math.pi / toothCount # in radians
+
+    # get ModelParameter
+    modelPrm = angleDim.parameter
+    modelPrm.expression = '180 / n'
+
+    # Create the line from the Pitch Line down PLD distance
+    endPt = vertLine.endSketchPoint.geometry.copy()
+    endPt.translateBy( adsk.core.Vector3D.create(0,-geom.pitchLineDepth/10,0) )
+    beltLine = sketch.sketchCurves.sketchLines.addByTwoPoints( vertLine.endSketchPoint, endPt )
+    geoConstraints.addCoincident( beltLine.endSketchPoint, vertLine )
+    textPoint = futil.offsetPoint3D( beltLine.startSketchPoint.geometry, -0.005, -0.0250, 0 )
+    dist = sketch.sketchDimensions.addDistanceDimension( 
+        beltLine.startSketchPoint, beltLine.endSketchPoint, 
+        adsk.fusion.DimensionOrientations.AlignedDimensionOrientation, textPoint 
+    )
+    dist.value = geom.pitchLineDepth / 10 # in cm
 
     # Create the tooth top arc
     topArc = sketch.sketchCurves.sketchArcs.addByCenterStartSweep( 
-        outerCircle.centerSketchPoint, vertLine.endSketchPoint, -math.pi / toothCount / 4 )
+        pitchCircle.centerSketchPoint, beltLine.endSketchPoint, -math.pi / toothCount / 4 )
     # geoConstraints.addCoincident( topArc.startSketchPoint, outerCircle )
-    geoConstraints.addConcentric( topArc, outerCircle )
-
-    # Create the tooth top arc mirror
-    topArcMirror = sketch.sketchCurves.sketchArcs.addByCenterStartSweep( 
-        outerCircle.centerSketchPoint, vertLine.endSketchPoint, math.pi / toothCount / 4 )
-    geoConstraints.addConcentric( topArcMirror, outerCircle )
-    geoConstraints.addSymmetry( topArc.startSketchPoint, topArcMirror.endSketchPoint, vertLine )
+    geoConstraints.addConcentric( topArc, pitchCircle )
 
     # Create the tooth top radius
-    centerPt = futil.offsetPoint3D( topArc.startSketchPoint.geometry, 0, -topRadius/10, 0 )
+    centerPt = futil.offsetPoint3D( topArc.startSketchPoint.geometry, 0, -geom.filletRadius/10, 0 )
     topRadiusArc = sketch.sketchCurves.sketchArcs.addByCenterStartSweep(
         centerPt, topArc.startSketchPoint, -math.pi / 4 )
     geoConstraints.addTangent( topArc, topRadiusArc )
     textPoint = centerPt
     radius = sketch.sketchDimensions.addRadialDimension( topRadiusArc, textPoint )
-    radius.value = topRadius / 10 # in cm
-
-    # Create the tooth top radius mirror
-    centerPt = futil.offsetPoint3D( topArcMirror.endSketchPoint.geometry, 0, -topRadius/10, 0 )
-    topRadiusArcMirror = sketch.sketchCurves.sketchArcs.addByCenterStartSweep(
-        centerPt, topArcMirror.endSketchPoint, math.pi / 4 )
-    geoConstraints.addTangent( topArcMirror, topRadiusArcMirror )
-    geoConstraints.addSymmetry( topRadiusArc.startSketchPoint, topRadiusArcMirror.endSketchPoint, vertLine )
+    radius.value = geom.filletRadius / 10 # in cm
     
     # Create the linear segment
-    endPt = futil.offsetPoint3D( topRadiusArc.startSketchPoint.geometry, topRadius/20, -topRadius/20, 0 )
+    endPt = futil.offsetPoint3D( topRadiusArc.startSketchPoint.geometry, geom.filletRadius/20, -geom.filletRadius/20, 0 )
     toothLine = sketch.sketchCurves.sketchLines.addByTwoPoints( 
         topRadiusArc.startSketchPoint, endPt )
     geoConstraints.addTangent( toothLine, topRadiusArc )
-    textPoint = futil.offsetPoint3D( toothLine.startSketchPoint.geometry, rootWidth / 40, 0, 0 )
+    textPoint = futil.offsetPoint3D( toothLine.startSketchPoint.geometry, geom.transitionDim / 40, 0, 0 )
     dist = sketch.sketchDimensions.addOffsetDimension( 
         pieLine, toothLine.startSketchPoint, textPoint )
-    dist.value = rootWidth / 20 # in cm
-
-    # Create the linear segment mirror
-    endPt = futil.offsetPoint3D( topRadiusArcMirror.startSketchPoint.geometry, -topRadius/20, -topRadius/20, 0 )
-    toothLineMirror = sketch.sketchCurves.sketchLines.addByTwoPoints( 
-        topRadiusArcMirror.endSketchPoint, endPt )
-    geoConstraints.addTangent( toothLineMirror, topRadiusArcMirror )
-    geoConstraints.addSymmetry( toothLineMirror.endSketchPoint, toothLine.endSketchPoint, vertLine )
+    dist.value = geom.transitionDim / 20 # in cm
 
     # Create the root arc
-    centerPt = futil.offsetPoint3D( pieLine.endSketchPoint.geometry, -topRadius/10, -topRadius/10, 0 )
+    centerPt = futil.offsetPoint3D( pieLine.endSketchPoint.geometry, -geom.filletRadius/10, -geom.filletRadius/10, 0 )
     rootArc = sketch.sketchCurves.sketchArcs.addByCenterStartSweep(
         pieLine.endSketchPoint, toothLine.endSketchPoint, math.pi / 4 )
     geoConstraints.addTangent( rootArc, toothLine )
     textPoint = futil.offsetPoint3D( pieLine.endSketchPoint.geometry, -0.05, -0.05, 0 )
     radius = sketch.sketchDimensions.addRadialDimension( rootArc, textPoint )
-    radius.value = rootRadius / 10 # in cm
+    radius.value = geom.toothBumpRadius / 10 # in cm
     geoConstraints.addCoincident( rootArc.endSketchPoint, pieLine )
     geoConstraints.addCoincident( rootArc.centerSketchPoint, pieLine )
 
-    textPoint = adsk.core.Point3D.create( outer_diameter / 40, outer_diameter / 40, 0 )
+    textPoint = pieLine.endSketchPoint.geometry.copy()
+    textPoint.translateBy( adsk.core.Vector3D.create(geom.pitchLineDepth/10,-geom.pitchLineDepth/10,0) )
     rootDist = sketch.sketchDimensions.addDistanceDimension( 
-        outerCircle.centerSketchPoint, rootArc.endSketchPoint, 
+        pieLine.endSketchPoint, rootArc.endSketchPoint, 
         adsk.fusion.DimensionOrientations.AlignedDimensionOrientation,
         textPoint )
-    rootDist.value = ( outer_diameter / 2 - rootHeight ) / 10 # in cm
+    rootDist.value = ( geom.toothHeight + geom.pitchLineDepth ) / 10 # in cm
 
-    # Create the root arc mirror
-    centerPt = rootArc.centerSketchPoint.geometry
-    centerPt.x = centerPt.x * -1.0
-    rootArcMirror = sketch.sketchCurves.sketchArcs.addByCenterStartSweep(
-        centerPt, toothLineMirror.endSketchPoint, -math.pi / 4 )
-    geoConstraints.addTangent( toothLineMirror, rootArcMirror )
-    geoConstraints.addSymmetry( rootArcMirror.startSketchPoint, rootArc.endSketchPoint, vertLine )
+    # Mirror the half tooth about the pie line
+    MirrorEntities = [ beltLine, topArc, topRadiusArc, toothLine, rootArc ]
+    sketch.mirror( MirrorEntities, pieLine )
 
-    # Create the circular pattern of the tooth profile
-    toothEntities = [ rootArcMirror, toothLineMirror, topRadiusArcMirror, topArcMirror, topArc, topRadiusArc, toothLine, rootArc ]
-    circularPattern = geoConstraints.createCircularPatternInput( toothEntities, outerCircle.centerSketchPoint )
-    circularPattern.quantity = adsk.core.ValueInput.createByReal( toothCount )
-    geoConstraints.addCircularPattern( circularPattern )
-
-
-def createGT2PulleyGeometry( sketch: adsk.fusion.Sketch, beltPitchMM: float, toothCount: int ) :
+def createGT2PulleyGeometry( sketch: adsk.fusion.Sketch, toothCount: int ) :
     geoConstraints = sketch.geometricConstraints
 
-    # beltThickness = 1.26
-    pitchLineOffset = 0.381
-    topRadius = 0.25
-    rootRadius = 0.85
-    rootHeight = 1.14
-    transitionRadius = 1.52
-    transitionOffset = 0.61
+    # Only setup for GT2-3M belts
+    geom = belt_geometry[1]
+
+    createParameters( geom, toothCount )
 
     # Create a single tooth of the pulley
-    pitch_diameter = toothCount * beltPitchMM / math.pi
-    outer_diameter = pitch_diameter - 2 * pitchLineOffset
+    pitch_diameter = toothCount * geom.pitchLength / math.pi
 
-    # Create outer diameter circle
+    # Create pitch diameter circle
     centerPt = adsk.core.Point3D.create()
-    outerCircle = sketch.sketchCurves.sketchCircles.addByCenterRadius( centerPt, outer_diameter )
-    outerCircle.isConstruction = True
-    geoConstraints.addCoincident( outerCircle.centerSketchPoint, sketch.originPoint )
+    pitchCircle = sketch.sketchCurves.sketchCircles.addByCenterRadius( centerPt, pitch_diameter )
+    geoConstraints.addCoincident( pitchCircle.centerSketchPoint, sketch.originPoint )
 
-    textPoint = adsk.core.Point3D.create( -outer_diameter / 40, 0, 0 )
-    diameter = sketch.sketchDimensions.addDiameterDimension( outerCircle, textPoint )
-    diameter.value = outer_diameter / 10 # in cm
+    textPoint = adsk.core.Point3D.create( -pitch_diameter / 40, -pitch_diameter / 40, 0 )
+    diameter = sketch.sketchDimensions.addDiameterDimension( pitchCircle, textPoint )
+
+    # get ModelParameter
+    modelPrm = diameter.parameter
+    modelPrm.expression = 'PD'
 
     # Create Vertical line from center to outerCircle
-    endPt = adsk.core.Point3D.create( 0, outer_diameter/20, 0 )
-    vertLine = sketch.sketchCurves.sketchLines.addByTwoPoints( outerCircle.centerSketchPoint, endPt )
+    endPt = adsk.core.Point3D.create( 0, pitch_diameter/20, 0 )
+    vertLine = sketch.sketchCurves.sketchLines.addByTwoPoints( pitchCircle.centerSketchPoint, endPt )
     vertLine.isConstruction = True
     # geoConstraints.addCoincident( vertLine.startSketchPoint, outerCircle.centerSketchPoint )
-    geoConstraints.addCoincident( vertLine.endSketchPoint, outerCircle )
+    geoConstraints.addCoincident( vertLine.endSketchPoint, pitchCircle )
     geoConstraints.addVertical( vertLine )
 
     # Create Pie line from center to outerCircle
-    endPt = adsk.core.Point3D.create( outer_diameter/20, 0, 0 )
-    pieLine = sketch.sketchCurves.sketchLines.addByTwoPoints( outerCircle.centerSketchPoint, endPt )
+    endPt = adsk.core.Point3D.create( pitch_diameter/20, 0, 0 )
+    pieLine = sketch.sketchCurves.sketchLines.addByTwoPoints( pitchCircle.centerSketchPoint, endPt )
     pieLine.isConstruction = True
     # geoConstraints.addCoincident( vertLine.startSketchPoint, outerCircle.centerSketchPoint )
-    geoConstraints.addCoincident( pieLine.endSketchPoint, outerCircle )
-    textPoint = adsk.core.Point3D.create( outer_diameter / 40, outer_diameter / 40, 0 )
+    geoConstraints.addCoincident( pieLine.endSketchPoint, pitchCircle )
+    textPoint = adsk.core.Point3D.create( pitch_diameter / 40, pitch_diameter / 40, 0 )
     angleDim = sketch.sketchDimensions.addAngularDimension( vertLine, pieLine, textPoint )
-    angleDim.value = math.pi / toothCount # in radians
+    # angleDim.value = math.pi / toothCount # in radians
+
+    # get ModelParameter
+    modelPrm = angleDim.parameter
+    modelPrm.expression = '180 / n'
+
+    # Create the line from the Pitch Line down PLD distance
+    endPt = vertLine.endSketchPoint.geometry.copy()
+    endPt.translateBy( adsk.core.Vector3D.create(0,-geom.pitchLineDepth/10,0) )
+    beltLine = sketch.sketchCurves.sketchLines.addByTwoPoints( vertLine.endSketchPoint, endPt )
+    geoConstraints.addCoincident( beltLine.endSketchPoint, vertLine )
+    textPoint = futil.offsetPoint3D( beltLine.startSketchPoint.geometry, -0.005, -0.0250, 0 )
+    dist = sketch.sketchDimensions.addDistanceDimension( 
+        beltLine.startSketchPoint, beltLine.endSketchPoint, 
+        adsk.fusion.DimensionOrientations.AlignedDimensionOrientation, textPoint 
+    )
+    dist.value = geom.pitchLineDepth / 10 # in cm
 
     # Create the tooth top arc
     topArc = sketch.sketchCurves.sketchArcs.addByCenterStartSweep( 
-        outerCircle.centerSketchPoint, vertLine.endSketchPoint, -math.pi / toothCount / 4 )
+        pitchCircle.centerSketchPoint, beltLine.endSketchPoint, -math.pi / toothCount / 4 )
     # geoConstraints.addCoincident( topArc.startSketchPoint, outerCircle )
-    geoConstraints.addConcentric( topArc, outerCircle )
-
-    # Create the tooth top arc mirror
-    topArcMirror = sketch.sketchCurves.sketchArcs.addByCenterStartSweep( 
-        outerCircle.centerSketchPoint, vertLine.endSketchPoint, math.pi / toothCount / 4 )
-    geoConstraints.addConcentric( topArcMirror, outerCircle )
-    geoConstraints.addSymmetry( topArc.startSketchPoint, topArcMirror.endSketchPoint, vertLine )
+    geoConstraints.addConcentric( topArc, pitchCircle )
 
     # Create the tooth top radius
-    centerPt = futil.offsetPoint3D( topArc.startSketchPoint.geometry, 0, -topRadius/10, 0 )
+    centerPt = futil.offsetPoint3D( topArc.startSketchPoint.geometry, 0, -geom.filletRadius/10, 0 )
     topRadiusArc = sketch.sketchCurves.sketchArcs.addByCenterStartSweep(
         centerPt, topArc.startSketchPoint, -math.pi / 2 )
     geoConstraints.addTangent( topArc, topRadiusArc )
     textPoint = centerPt
+    textPoint.translateBy( adsk.core.Vector3D.create(geom.filletRadius / 20, geom.filletRadius / 20, 0 ))
     radius = sketch.sketchDimensions.addRadialDimension( topRadiusArc, textPoint )
-    radius.value = topRadius / 10 # in cm
-
-    # Create the tooth top radius mirror
-    centerPt = futil.offsetPoint3D( topArcMirror.endSketchPoint.geometry, 0, -topRadius/10, 0 )
-    topRadiusArcMirror = sketch.sketchCurves.sketchArcs.addByCenterStartSweep(
-        centerPt, topArcMirror.endSketchPoint, math.pi / 2 )
-    geoConstraints.addTangent( topArcMirror, topRadiusArcMirror )
-    geoConstraints.addSymmetry( topRadiusArc.startSketchPoint, topRadiusArcMirror.endSketchPoint, vertLine )
+    radius.value = geom.filletRadius / 10 # in cm
     
     # Create the transistion arc
-    centerPt = futil.offsetPoint3D( pieLine.endSketchPoint.geometry, transitionOffset / 10, -transitionOffset/100, 0 )
-    endPt = futil.offsetPoint3D( topRadiusArc.startSketchPoint.geometry, topRadius/20, -topRadius/10, 0 )
+    centerPt = futil.offsetPoint3D( pieLine.endSketchPoint.geometry, geom.transitionDim / 10, -geom.transitionDim/100, 0 )
+    endPt = futil.offsetPoint3D( topRadiusArc.startSketchPoint.geometry, geom.filletRadius/20, -geom.filletRadius/10, 0 )
     transistionArc = sketch.sketchCurves.sketchArcs.addByCenterStartEnd( 
         centerPt, topRadiusArc.startSketchPoint, endPt )
     geoConstraints.addTangent( transistionArc, topRadiusArc )
-    textPoint = futil.midPoint3D( centerPt, transistionArc.startSketchPoint.geometry )
+
+    # textPoint = futil.midPoint3D( centerPt, transistionArc.startSketchPoint.geometry )
+    # textPoint.translateBy( -geom.filletRadius/20, geom.filletRadius, 0 )
+
+    textPoint = futil.Arc3DTextPoint( transistionArc )
     radius = sketch.sketchDimensions.addRadialDimension( transistionArc, textPoint )
-    radius.value = transitionRadius / 10 # in cm
-    textPoint = futil.midPoint3D( centerPt, transistionArc.endSketchPoint.geometry )
+    radius.value = geom.transitionRadius / 10 # in cm
+
+    textPoint = transistionArc.centerSketchPoint.geometry.copy()
+    textPoint.translateBy( adsk.core.Vector3D.create(-geom.transitionDim / 20, geom.transitionDim / 50, 0 ))
     dist = sketch.sketchDimensions.addOffsetDimension( 
         pieLine, transistionArc.centerSketchPoint, textPoint )
-    dist.value = transitionOffset / 10 # in cm
-
-    # Create the transistion arc mirror
-    centerPt = transistionArc.centerSketchPoint.geometry
-    centerPt.x = centerPt.x * -1.0
-    endPt = transistionArc.endSketchPoint.geometry
-    endPt.x = endPt.x * -1.0
-    transistionArcMirror = sketch.sketchCurves.sketchArcs.addByCenterStartEnd( 
-        centerPt, endPt, topRadiusArcMirror.endSketchPoint )
-    geoConstraints.addTangent( transistionArcMirror, topRadiusArcMirror )
-    geoConstraints.addSymmetry( transistionArc.endSketchPoint, transistionArcMirror.startSketchPoint, vertLine )
+    dist.value = geom.transitionDim / 10 # in cm
+    radius.textPosition = futil.Arc3DTextPoint( transistionArc )
 
     # Create the root arc
-    centerPt = futil.offsetPoint3D( pieLine.endSketchPoint.geometry, -topRadius/10, -topRadius/10, 0 )
+    centerPt = futil.offsetPoint3D( pieLine.endSketchPoint.geometry, -geom.filletRadius/10, -geom.filletRadius/10, 0 )
     rootArc = sketch.sketchCurves.sketchArcs.addByCenterStartSweep(
         pieLine.endSketchPoint, transistionArc.endSketchPoint, math.pi / 4 )
     geoConstraints.addTangent( rootArc, transistionArc )
-    textPoint = futil.offsetPoint3D( pieLine.endSketchPoint.geometry, -0.05, -0.05, 0 )
+    # textPoint = futil.offsetPoint3D( pieLine.endSketchPoint.geometry, -0.05, -0.05, 0 )
+    textPoint = futil.Arc3DTextPoint( rootArc )
     radius = sketch.sketchDimensions.addRadialDimension( rootArc, textPoint )
-    radius.value = rootRadius / 10 # in cm
+    radius.value = geom.toothBumpRadius / 10 # in cm
     geoConstraints.addCoincident( rootArc.endSketchPoint, pieLine )
     geoConstraints.addCoincident( rootArc.centerSketchPoint, pieLine )
 
-    textPoint = adsk.core.Point3D.create( outer_diameter / 40, outer_diameter / 40, 0 )
+    textPoint = rootArc.centerSketchPoint.geometry.copy()
+    textPoint.translateBy( adsk.core.Vector3D.create(geom.transitionDim / 50, 0, 0 ))
     rootDist = sketch.sketchDimensions.addDistanceDimension( 
-        outerCircle.centerSketchPoint, rootArc.endSketchPoint, 
+        pieLine.endSketchPoint, rootArc.endSketchPoint, 
         adsk.fusion.DimensionOrientations.AlignedDimensionOrientation,
         textPoint )
-    rootDist.value = ( outer_diameter / 2 - rootHeight ) / 10 # in cm
+    rootDist.value = ( geom.toothHeight + geom.pitchLineDepth ) / 10 # in cm
 
-    # Create the root arc mirror
-    centerPt = rootArc.centerSketchPoint.geometry
-    centerPt.x = centerPt.x * -1.0
-    rootArcMirror = sketch.sketchCurves.sketchArcs.addByCenterStartSweep(
-        centerPt, transistionArcMirror.startSketchPoint, -math.pi / 4 )
-    geoConstraints.addSymmetry( rootArcMirror.centerSketchPoint, rootArc.centerSketchPoint, vertLine )
-    geoConstraints.addSymmetry( rootArcMirror.startSketchPoint, rootArc.endSketchPoint, vertLine )
-
-    # Create the circular pattern of the tooth profile
-    toothEntities = [ rootArcMirror, transistionArcMirror, topRadiusArcMirror, topArcMirror, topArc, topRadiusArc, transistionArc, rootArc ]
-    circularPattern = geoConstraints.createCircularPatternInput( toothEntities, outerCircle.centerSketchPoint )
-    circularPattern.quantity = adsk.core.ValueInput.createByReal( toothCount )
-    geoConstraints.addCircularPattern( circularPattern )
+    # Mirror the half tooth about the pie line
+    MirrorEntities = [ beltLine, topArc, topRadiusArc, transistionArc, rootArc ]
+    sketch.mirror( MirrorEntities, pieLine )

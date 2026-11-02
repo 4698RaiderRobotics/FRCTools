@@ -67,10 +67,10 @@ class Dialog :
 
         self.swapCogs = inputs.addBoolValueInput( "swap_cogs", "Swap Cogs", True )
 
-        self.beltTeeth = inputs.addIntegerSpinnerCommandInput( "belt_teeth", "Belt Teeth", 35, 400, 1, 70 )
+        self.beltTeeth = inputs.addIntegerSpinnerCommandInput( "belt_teeth", "Belt Teeth", 25, 2000, 1, 70 )
         self.beltTeeth.isVisible = False
 
-        self.chainLinks = inputs.addIntegerSpinnerCommandInput( "chain_links", "Chain Links", 25, 400, 2, 60 )
+        self.chainLinks = inputs.addIntegerSpinnerCommandInput( "chain_links", "Chain Links", 10, 400, 2, 60 )
         self.chainLinks.isVisible = False
 
         # Create a value input field and set the default using 1 unit of the default length unit.
