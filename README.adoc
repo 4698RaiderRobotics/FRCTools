@@ -8,7 +8,13 @@ These are some tools to speed up some CAD operations that occur frequently in FR
 
 Also consider using https://github.com/hammerheads5000/FRC-COTS[Team 5000s FRC-COTS] to manage COTS files.
 
-*NEW in Version 1.4.0:*
+*NEW in Version 1.5:*
+
+* Handles either Part Design or Hybrid Design Files and allows the option to create belts and pulleys in the root component for Hybrid Files.
+* Creation of a Timing Pulley now creates associated Parameters so the number of teeth and width can be changed after the pulley is created.
+* Create Pulley/Belt command now will create circular timing belts that can be used for 3D Printing.  They also use parameters so they can be modified with recreating them.
+
+*NEW in Version 1.4:*
 
 * Shaft end operations (<<shaft-endings>>)
 * Generator files included for chain sprockets and timing belt pulleys (generators subfolder)
@@ -29,7 +35,7 @@ image::CCDistanceCreate.png[]
 === Edit C-C Distance Tool image:icons/CCDistance.png['C-C Distance', 30]
 TIP: kbd:[Sketch Tab] menu:Modify[FRCTools > Edit C-C Distance]
 
-This tool allows for the editing of an existing C-C Distance object. The C-C Distance can be edited by right clicking on it and selecting `Edit C-C Distance` from the popup menu or by selecting an existing C-C Distance within the C-C Distance command. The linked entities can be edited as a unit.  Deleting any part of the C-C Distance will delete all of it.  A C-C Distance can be edited by right clicking on it and selecting `Edit C-C Distance` or by selecting an existing C-C Distance within the Edit C-C Distance command.
+This tool allows for the editing of an existing C-C Distance object. The C-C Distance can be edited by right clicking on it and selecting `Edit C-C Distance` from the popup menu or by selecting an existing C-C Distance within the C-C Distance command. The linked entities can be edited as a unit.  Deleting any part of the C-C Distance will delete all of it.
 
 image::CCDistanceEdit.png[]
 

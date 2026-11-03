@@ -25,10 +25,10 @@ from .Tubify import entry as Tubify
 commands = [
     BoltPattern,
     CCDistance,
-    ShaftEndings,
-    Lighten,
     TimingBelt,
     TimingPulley,
+    ShaftEndings,
+    Lighten,
     Tubify
 ]
 

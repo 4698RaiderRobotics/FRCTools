@@ -13,8 +13,8 @@ ui = app.userInterface
 
 # *** Specify the command identity information. ***
 CMD_ID = f'{config.COMPANY_NAME}_{config.ADDIN_NAME}_TimingPulleyDialog'
-CMD_NAME = 'Timing Pulley'
-CMD_Description = 'Create a Timing Belt Pulley'
+CMD_NAME = 'Create Pulley/Belt'
+CMD_Description = 'Create a Circular Timing Belt or Pulley'
 
 # Specify that the command will be promoted to the panel.
 IS_PROMOTED = False
@@ -81,9 +81,11 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     planeSelection.setSelectionLimits( 1, 1 )
 
     # Create a simple text box input.
-    belt_type = inputs.addDropDownCommandInput('belt_type', 'Timing Belt Type', adsk.core.DropDownStyles.TextListDropDownStyle)
-    belt_type.listItems.add('HTD 5mm Pitch', True, '')
-    belt_type.listItems.add('GT2 3mm Pitch', False, '')
+    belt_type = inputs.addDropDownCommandInput('belt_type', 'Belt/Pulley Type', adsk.core.DropDownStyles.TextListDropDownStyle)
+    belt_type.listItems.add('HTD-5M Pulley', True, '')
+    belt_type.listItems.add('GT2-3M Pulley', False, '')
+    belt_type.listItems.add('HTD-5M Circluar Belt', False, '')
+    belt_type.listItems.add('GT2-3M Circluar Belt', False, '')
 
     # Create a value input field for the number of teeth.
     defaultLengthUnits = ""
@@ -150,53 +152,63 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
         if beltType.selectedItem.index == 0 :
             if workingComp != rootComp :
-                workingComp.name = f"Pulley_HTD_5mm-{toothCount.value}Tx{int(beltWidth.value*10)}mm"
+                workingComp.name = f"Pulley_HTD-5M-{toothCount.value}Tx{int(beltWidth.value*10)}mm"
             createHTDPulleyGeometry( sketch, toothCount.value )
+            toothExtrude, axisEdge = extrudePulley( workingComp, sketch, beltWidth.value )
+        elif beltType.selectedItem.index == 1 :
+            if workingComp != rootComp :
+                workingComp.name = f"Pulley_GT2-3M-{toothCount.value}Tx{int(beltWidth.value*10)}mm"
+            createGT2PulleyGeometry( sketch, toothCount.value )
+            toothExtrude, axisEdge = extrudePulley( workingComp, sketch, beltWidth.value )
+        elif beltType.selectedItem.index == 2 :
+            if workingComp != rootComp :
+                workingComp.name = f"Belt_HTD-5M-{toothCount.value}Tx{int(beltWidth.value*10)}mm"
+            createHTDPulleyGeometry( sketch, toothCount.value )
+            addOuterBeltCircle( sketch, belt_geometry[0] )
+            toothExtrude, axisEdge = extrudeBelt( workingComp, sketch, beltWidth.value )
         else:
             if workingComp != rootComp :
-                workingComp.name = f"Pulley_GT2_3mm-{toothCount.value}Tx{int(beltWidth.value*10)}mm"
+                workingComp.name = f"Belt_GT2-3M-{toothCount.value}Tx{int(beltWidth.value*10)}mm"
             createGT2PulleyGeometry( sketch, toothCount.value )
+            addOuterBeltCircle( sketch, belt_geometry[1] )
+            toothExtrude, axisEdge = extrudeBelt( workingComp, sketch, beltWidth.value )
 
-        # Extrude the pulley sketch 
-        if sketch.profiles.count != 2 :
-            futil.popup_error(f'Sketch does not have 2 profiles, has {sketch.profiles.count} profiles.')
-            return
+        # # Extrude the pulley sketch 
+        # if sketch.profiles.count != 2 :
+        #     futil.popup_error(f'Sketch does not have 2 profiles, has {sketch.profiles.count} profiles.')
+        #     return
 
-        plug_prof = sketch.profiles.item(0)
-        tooth_prof = sketch.profiles.item(1)
-        if plug_prof.face.area < tooth_prof.face.area :
-            plug_prof = sketch.profiles.item(1)
-            tooth_prof = sketch.profiles.item(0)
+        # plug_prof = sketch.profiles.item(0)
+        # tooth_prof = sketch.profiles.item(1)
+        # if plug_prof.face.area < tooth_prof.face.area :
+        #     plug_prof = sketch.profiles.item(1)
+        #     tooth_prof = sketch.profiles.item(0)
 
-        extrudes = workingComp.features.extrudeFeatures
-        beltWidthValue = adsk.core.ValueInput.createByReal( beltWidth.value )
-        profiles = adsk.core.ObjectCollection.createWithArray( [plug_prof, tooth_prof] )
-        cylExtrude = extrudes.addSimple(profiles, beltWidthValue, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+        # extrudes = workingComp.features.extrudeFeatures
+        # beltWidthValue = adsk.core.ValueInput.createByReal( beltWidth.value )
+        # profiles = adsk.core.ObjectCollection.createWithArray( [plug_prof, tooth_prof] )
+        # cylExtrude = extrudes.addSimple(profiles, beltWidthValue, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
 
-        # Get TemporaryBRepManager
-        tempBrepMgr = adsk.fusion.TemporaryBRepManager.get()
-        cylinder = tempBrepMgr.copy( cylExtrude.bodies.item(0) )
+        # cutTooth = extrudes.addSimple(tooth_prof, beltWidthValue, adsk.fusion.FeatureOperations.CutFeatureOperation)
 
-        cutTooth = extrudes.addSimple(tooth_prof, beltWidthValue, adsk.fusion.FeatureOperations.CutFeatureOperation)
-
-        # Find the axis of the circular pattern
-        pitch_circle = None
-        cyl_edge = None
-        for edge in cylExtrude.bodies.item(0).edges:
-            if edge.geometry.classType() == adsk.core.Arc3D.classType() :
-                arc: adsk.core.Arc3D = edge.geometry
-                if not pitch_circle:
-                    pitch_circle = arc
-                    cyl_edge = edge
-                else:
-                    if arc.radius > pitch_circle.radius:
-                        pitch_circle = arc
-                        cyl_edge = edge
+        # # Find the axis of the circular pattern
+        # pitch_circle = None
+        # cyl_edge = None
+        # for edge in cylExtrude.bodies.item(0).edges:
+        #     if edge.geometry.classType() == adsk.core.Arc3D.classType() :
+        #         arc: adsk.core.Arc3D = edge.geometry
+        #         if not pitch_circle:
+        #             pitch_circle = arc
+        #             cyl_edge = edge
+        #         else:
+        #             if arc.radius > pitch_circle.radius:
+        #                 pitch_circle = arc
+        #                 cyl_edge = edge
 
 
-        # Pattern the Cut tooth Feature around the pulley
-        patObj = adsk.core.ObjectCollection.createWithArray( [ cutTooth ] )
-        circPat = workingComp.features.circularPatternFeatures.createInput( patObj, cyl_edge )
+        # Pattern the tooth Feature around the pulley
+        patObj = adsk.core.ObjectCollection.createWithArray( [ toothExtrude ] )
+        circPat = workingComp.features.circularPatternFeatures.createInput( patObj, axisEdge )
         circPat.quantity = adsk.core.ValueInput.createByString( 'n' )
         circPat.patternComputeOption = adsk.fusion.PatternComputeOptions.IdenticalPatternCompute
         workingComp.features.circularPatternFeatures.add( circPat )
@@ -270,17 +282,6 @@ def createParameters( geom: TimingBeltGeom, toothCount: int ) :
     pitchDiaVI = adsk.core.ValueInput.createByString( 'n * p / 3.14159' ) # in CM
     pd_param = parameters.add( 'PD', pitchDiaVI, 'mm', 'Pitch Diameter' )
 
-# def getParameter( name: str ) :
-#     design: adsk.fusion.Design = app.activeProduct
-
-#     parameters = design.userParameters
-
-#     param = parameters.itemByName( name )
-#     if not param:
-#         futil.popup_error(f'Cannot find parameter "{name}".')
-
-#     return param
-
 def createHTDPulleyGeometry( sketch: adsk.fusion.Sketch, toothCount: int ) :
     geoConstraints = sketch.geometricConstraints
 
@@ -294,7 +295,7 @@ def createHTDPulleyGeometry( sketch: adsk.fusion.Sketch, toothCount: int ) :
 
     # Create pitch diameter circle
     centerPt = adsk.core.Point3D.create()
-    pitchCircle = sketch.sketchCurves.sketchCircles.addByCenterRadius( centerPt, pitch_diameter )
+    pitchCircle = sketch.sketchCurves.sketchCircles.addByCenterRadius( centerPt, pitch_diameter/2 )
     geoConstraints.addCoincident( pitchCircle.centerSketchPoint, sketch.originPoint )
 
     textPoint = adsk.core.Point3D.create( pitch_diameter / 40, pitch_diameter / 40, 0 )
@@ -399,7 +400,7 @@ def createGT2PulleyGeometry( sketch: adsk.fusion.Sketch, toothCount: int ) :
 
     # Create pitch diameter circle
     centerPt = adsk.core.Point3D.create()
-    pitchCircle = sketch.sketchCurves.sketchCircles.addByCenterRadius( centerPt, pitch_diameter )
+    pitchCircle = sketch.sketchCurves.sketchCircles.addByCenterRadius( centerPt, pitch_diameter/2 )
     geoConstraints.addCoincident( pitchCircle.centerSketchPoint, sketch.originPoint )
 
     textPoint = adsk.core.Point3D.create( -pitch_diameter / 40, -pitch_diameter / 40, 0 )
@@ -503,3 +504,134 @@ def createGT2PulleyGeometry( sketch: adsk.fusion.Sketch, toothCount: int ) :
     # Mirror the half tooth about the pie line
     MirrorEntities = [ beltLine, topArc, topRadiusArc, transistionArc, rootArc ]
     sketch.mirror( MirrorEntities, pieLine )
+
+def addOuterBeltCircle( sketch: adsk.fusion.Sketch, geom: TimingBeltGeom ):
+
+    # Find the pitch circle
+    circles = sketch.sketchCurves.sketchCircles
+    pitch_cir = None
+    for cir in circles:
+        if not pitch_cir or pitch_cir.radius < cir.radius:
+            pitch_cir = cir
+
+    if not pitch_cir:
+        raise Exception( 'Cannot find the Pitch Circle!' )
+
+    # Add the belt OD circle
+    centerPt = adsk.core.Point3D.create()
+    beltODCircle = sketch.sketchCurves.sketchCircles.addByCenterRadius( centerPt, pitch_cir.radius + 0.1 )
+    sketch.geometricConstraints.addCoincident( beltODCircle.centerSketchPoint, pitch_cir.centerSketchPoint )
+
+    textPoint = adsk.core.Point3D.create( pitch_cir.radius, pitch_cir.radius/4, 0 )
+    diameter = sketch.sketchDimensions.addDiameterDimension( beltODCircle, textPoint )
+
+    # get ModelParameter
+    modelPrm = diameter.parameter
+    modelPrm.expression = f'PD + {geom.thickness-geom.pitchLineDepth}mm'
+    
+def extrudePulley( workingComp: adsk.fusion.Component, 
+                  sketch: adsk.fusion.Sketch, 
+                  beltWidth: float ) -> tuple[adsk.fusion.ExtrudeFeature, adsk.fusion.BRepEdge]:
+    # Extrude the pulley sketch 
+    if sketch.profiles.count != 2 :
+        futil.popup_error(f'Sketch does not have 2 profiles, has {sketch.profiles.count} profiles.')
+        return
+
+    plug_prof = sketch.profiles.item(0)
+    tooth_prof = sketch.profiles.item(1)
+    if plug_prof.face.area < tooth_prof.face.area :
+        plug_prof = sketch.profiles.item(1)
+        tooth_prof = sketch.profiles.item(0)
+
+    extrudes = workingComp.features.extrudeFeatures
+    beltWidthValue = adsk.core.ValueInput.createByReal( beltWidth )
+    profiles = adsk.core.ObjectCollection.createWithArray( [plug_prof, tooth_prof] )
+    cylExtrude = extrudes.addSimple(profiles, beltWidthValue, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+
+    cutTooth = extrudes.addSimple(tooth_prof, beltWidthValue, adsk.fusion.FeatureOperations.CutFeatureOperation)
+
+    # Find the axis of the circular pattern
+    pitch_circle = None
+    cyl_edge = None
+    for edge in cylExtrude.bodies.item(0).edges:
+        if edge.geometry.classType() == adsk.core.Arc3D.classType() :
+            arc: adsk.core.Arc3D = edge.geometry
+            if not pitch_circle:
+                pitch_circle = arc
+                cyl_edge = edge
+            else:
+                if arc.radius > pitch_circle.radius:
+                    pitch_circle = arc
+                    cyl_edge = edge
+
+    return [ cutTooth, cyl_edge ]
+
+def extrudeBelt( workingComp: adsk.fusion.Component, 
+                 sketch: adsk.fusion.Sketch, 
+                 beltWidth: float ) -> tuple[adsk.fusion.ExtrudeFeature, adsk.fusion.BRepEdge]:
+    # Extrude the pulley sketch 
+    if sketch.profiles.count != 3 :
+        futil.popup_error(f'Sketch does not have 3 profiles, has {sketch.profiles.count} profiles.')
+        return
+
+    # Find the plug profile which has the largest area
+    plug_idx = 0
+    plug_area = 0
+    for idx in range( sketch.profiles.count ):
+        prof = sketch.profiles.item( idx )
+        if prof.face.area > plug_area:
+            plug_idx = idx
+            plug_area = prof.face.area
+
+    plug_prof = sketch.profiles.item(plug_idx)
+    plug_centroid = plug_prof.face.centroid
+
+    # Find the belt OD profile which will have a centroid closest to the plug centroid
+    beltOD_idx = -1
+    min_centroid_dist = 99999999
+    for idx in range( sketch.profiles.count ):
+        if idx == plug_idx:
+            continue
+        prof_centroid = sketch.profiles.item( idx ).face.centroid
+        centroid_dist = prof_centroid.distanceTo( plug_prof.face.centroid )
+        if centroid_dist < min_centroid_dist:
+            beltOD_idx = idx
+            min_centroid_dist = centroid_dist
+
+    if beltOD_idx < 0 :
+        raise Exception( 'Cannot find the Belt OD Profile!')
+
+    belt_prof = sketch.profiles.item(beltOD_idx)
+
+    # Determine the tooth profile based on the plug and belt indices
+    match plug_idx + beltOD_idx:
+        case 1:
+            tooth_idx = 2
+        case 2:
+            tooth_idx = 1
+        case _:
+            tooth_idx = 0
+
+    tooth_prof = sketch.profiles.item(tooth_idx)
+
+    extrudes = workingComp.features.extrudeFeatures
+    beltWidthValue = adsk.core.ValueInput.createByReal( beltWidth )
+    cylExtrude = extrudes.addSimple(belt_prof, beltWidthValue, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+
+    toothFeat = extrudes.addSimple(tooth_prof, beltWidthValue, adsk.fusion.FeatureOperations.JoinFeatureOperation)
+
+    # Find the axis of the circular pattern
+    pitch_circle = None
+    cyl_edge = None
+    for edge in cylExtrude.bodies.item(0).edges:
+        if edge.geometry.classType() == adsk.core.Arc3D.classType() :
+            arc: adsk.core.Arc3D = edge.geometry
+            if not pitch_circle:
+                pitch_circle = arc
+                cyl_edge = edge
+            else:
+                if arc.radius > pitch_circle.radius:
+                    pitch_circle = arc
+                    cyl_edge = edge
+
+    return [ toothFeat, cyl_edge ]

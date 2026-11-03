@@ -2,16 +2,18 @@
 
 build_path="./build"
 program_basename="FRCTools"
-version=`gawk '/version/ {gsub(/\042|,/, ""); print $2 }' ./FRCTools.manifest`
+zip_exe="/mnt/c/Program Files/7-Zip/7z.exe"
+makensis="/mnt/c/Program Files (x86)/NSIS/makensis.exe"
+version=`gawk '/version/ {gsub(/\042|,|\r/, ""); print $2 }' ./FRCTools.manifest`
 
-echo "Extracted version is $version"
+echo "Extracted version is '${version}'"
 
-"C:/Program Files/7-Zip/7z.exe" d $build_path/$program_basename.zip *
+"$zip_exe" d $build_path/$program_basename.zip *
 
-"C:/Program Files/7-Zip/7z.exe" a $build_path/$program_basename.zip \
+"$zip_exe" a $build_path/$program_basename.zip \
     *.py *.manifest -ir!lib/* -ir!commands/* -ir!generators/* -xr!__pycache__
 
-"C:/Program Files (x86)/NSIS/makensis.exe" -V4 ./win_install.nsi
+"$makensis" -V4 ./win_install.nsi
 
 echo
 echo
